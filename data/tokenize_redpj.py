@@ -11,8 +11,9 @@ from datasets import load_dataset, Dataset
 
 @dataclass
 class TokenizeConfig:
-    tokenizer_model_name: Optional[str] = field(default='meta-llama/Meta-Llama-3-8B')
-    load_dataset_path: Optional[str] = field(default='togethercomputer/RedPajama-Data-1T-Sample')
+    # tokenizer_model_name: Optional[str] = field(default='meta-llama/Meta-Llama-3-8B')
+    tokenizer_model_name: Optional[str] = field(default='/home/zliu/shared_resources/models/llama3/hf/Meta-Llama-3-8B')
+    load_dataset_path: Optional[str] = field(default='/home/zliu/shared_resources/datasets/RedPajama-Data-1T-Sample')
     num_proc: Optional[int] = field(default=16)
     # logging
     wandb_logging: Optional[bool] = field(default=False)
@@ -22,7 +23,7 @@ class TokenizeConfig:
     def __post_init__(self):
         if self.load_dataset_path == 'togethercomputer/RedPajama-Data-1T':
             self.text_key = 'text'
-        elif self.load_dataset_path == 'togethercomputer/RedPajama-Data-1T-Sample':
+        elif "RedPajama-Data-1T-Sample" in self.load_dataset_path:
             self.text_key = 'text'
         else:
             raise NotImplementedError('Only support RedPajama-Data-1T and RedPajama-Data-V2')

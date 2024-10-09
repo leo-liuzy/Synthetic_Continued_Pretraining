@@ -31,6 +31,8 @@ fi
 echo "Running experiment with run name: $run_name"
 output_dir="ckpts/${run_name}"
 
+# # echo "subsample_ratio: $subsample_ratio"
+# exit
 # Execute the training command with the specific hyperparameters
 torchrun --nproc_per_node=$gpu_count  train.py \
     --model_name=$model_name \

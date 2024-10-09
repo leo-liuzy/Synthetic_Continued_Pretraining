@@ -3,21 +3,33 @@ from typing import Dict
 import numpy as np
 import torch
 
-def _get_bin(task_name: str, split: str):
-    assert task_name in ['quality', 'rehersal', 'instruct']
+def _get_bin(task_name: str, split: str, **kwargs):
+    assert task_name in ['quality', 'rehersal', 'instruct', "jd-vance"]
     bin_data_dir = 'data/dataset/bins'
+
+    if task_name == "jd-vance":
+        bin_fname = f"{task_name}_entigraph_gpt-4-turbo"
+        if kwargs.get("no_single", False):
+            bin_fname += "_no1"
+        if kwargs.get("no_pair", False):
+            bin_fname += "_no2"
+        if kwargs.get("no_triplet", False):
+            bin_fname += "_no3"
+    else:
+        bin_fname = "quality_all-entigraphgpt-4-turbo"
+
     implemented_quality_split = {
-        'entigraph': f'{bin_data_dir}/quality_all-entigraphgpt-4-turbo.bin',
+        'entigraph': f'{bin_data_dir}/{bin_fname}.bin',
     }
     implemented_rehersal_split = {
-        'rpj-train': f'{bin_data_dir}/togethercomputer_RedPajama_Data_1T_Sample_train.bin',
-        'rpj-test': f'{bin_data_dir}/togethercomputer_RedPajama_Data_1T_Sample_test.bin'
+        'rpj-train': f'{bin_data_dir}/RedPajama_Data_1T_Sample_train.bin',
+        'rpj-test': f'{bin_data_dir}/RedPajama_Data_1T_Sample_test.bin'
     }
     implemented_instruct_split = {
         'ultrachat-train': f'{bin_data_dir}/ultrachat_train.bin',
         'ultrachat-test': f'{bin_data_dir}/ultrachat_test.bin'
     }
-    if task_name == 'quality':
+    if task_name in ['quality', "jd-vance"]:
         assert split in implemented_quality_split
         return implemented_quality_split[split]
     elif task_name == 'rehersal':
@@ -49,12 +61,12 @@ class _MemmapDataset(Dataset):
 
 class CPTDataset(_MemmapDataset):
     def __init__ (self, block_size: int, rehersal_rate: float,
-                 subsample_ratio: float):
+                 subsample_ratio: float, task_name, **kwargs):
         assert rehersal_rate <= 1.0
         self.rehersal_rate = rehersal_rate
         self.rehersal_data = _MemmapDataset(block_size, _get_bin('rehersal', 'rpj-train'), 1.0)
         super().__init__(block_size,
-                            _get_bin('quality', 'entigraph'),
+                            _get_bin(task_name, 'entigraph', **kwargs),
                             subsample_ratio)
 
     def __len__(self):
@@ -72,6 +84,11 @@ def get_task_data_module(task_name: str,
                          rehersal_rate: float,
                          subsample_ratio: float,
                          **kwargs):
+    if task_name == 'jd-vance':
+        train = CPTDataset(block_size, rehersal_rate, subsample_ratio, task_name, **kwargs)
+        val = _MemmapDataset(block_size, _get_bin('rehersal', 'rpj-test'), 1.0)
+        return dict(train_dataset=train, eval_dataset=val)
+
     if task_name == 'quality':
         train = CPTDataset(block_size, rehersal_rate, subsample_ratio)
         val = _MemmapDataset(block_size, _get_bin('rehersal', 'rpj-test'), 1.0)
