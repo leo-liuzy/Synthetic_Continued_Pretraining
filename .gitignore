@@ -166,3 +166,5 @@ data/dataset
 .vscode/
 wandb/
 ckpts/
+.history/
+**/*.tar.gz

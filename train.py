@@ -3,13 +3,16 @@ from typing import Optional, List
 import transformers
 import os
 import warnings
+
 warnings.filterwarnings("ignore", category=FutureWarning)
 import logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 from data.cptdata import get_task_data_module
 
 from peft import get_peft_model, LoraConfig, TaskType
+
 
 @dataclass
 class TrainingConfig:
@@ -18,9 +21,15 @@ class TrainingConfig:
     rehersal_rate: float
     model_name: str
     subsample_ratio: float
+    trimE: bool
     no_single: bool
     no_pair: bool
     no_triplet: bool
+    train_split: Optional[str] = "1doc"
+    valid_split: Optional[str] = "valid"
+
+    sample_triplet_ratio: Optional[float] = None
+    specified_bin: Optional[str] = None
 
     wandb_project: Optional[str] = field(default="synthetic-continued-pretraining")
     use_peft: bool = False
@@ -29,7 +38,7 @@ class TrainingConfig:
     lora_target_modules: List[str] = field(default_factory=lambda: ["all-linear"])
 
     def __post_init__(self):
-        os.environ['WANDB_PROJECT'] = self.wandb_project
+        os.environ["WANDB_PROJECT"] = self.wandb_project
 
 
 def train():
@@ -43,12 +52,22 @@ def train():
     # loading dataset
     data_module = get_task_data_module(**asdict(config))
 
-    if config.no_single:
-        args.output_dir += "_no1"
-    if config.no_pair:
-        args.output_dir += "_no2"
-    if config.no_triplet:
-        args.output_dir += "_no3"
+    if config.task_name == "real-jd-vance":
+        # args.dataloader_drop_last = False
+        args.output_dir += f"_{config.train_split}"
+    else:
+        if config.trimE:
+            args.output_dir += "_trimE"
+        if config.no_single:
+            args.output_dir += "_no1"
+        if config.no_pair:
+            args.output_dir += "_no2"
+
+        if config.sample_triplet_ratio is not None:
+            assert not config.no_triplet
+            args.output_dir += f"_sub3={config.sample_triplet_ratio}"
+        elif config.no_triplet:
+            args.output_dir += "_no3"
 
     # loading model
     model = transformers.AutoModelForCausalLM.from_pretrained(
@@ -62,7 +81,7 @@ def train():
             inference_mode=False,
             r=config.lora_r,
             lora_alpha=2 * config.lora_r,  # this is recommended by Atula
-            lora_dropout=config.lora_dropout
+            lora_dropout=config.lora_dropout,
         )
         logging.info(f"Using LoRA: {peft_config}")
         model = get_peft_model(model, peft_config)
@@ -75,10 +94,10 @@ def train():
     # setting up trainer
     trainer = transformers.Trainer(model=model, args=args, **data_module)
     trainer.train()
-    model.save_pretrained(save_directory=args.output_dir)
-    # trainer.save_model(output_dir=)
+    trainer.model.save_pretrained(save_directory=args.output_dir)
+    # trainer.save_model(output_dir=args.output_dir)
+    # trainer.save_model()
     trainer.accelerator.wait_for_everyone()
-
 
 
 if __name__ == "__main__":
