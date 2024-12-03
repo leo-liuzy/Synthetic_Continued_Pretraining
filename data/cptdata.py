@@ -2,6 +2,7 @@ from torch.utils.data import Dataset
 from typing import Dict, Optional
 import numpy as np
 import torch
+import math
 
 
 def _get_bin(task_name: str, split: str, **kwargs):
@@ -60,13 +61,31 @@ class _MemmapDataset(Dataset):
         self.ids = self.ids[: int(len(self.ids) * subsample_ratio)]
 
     def __len__(self):
-        return int(len(self.ids) / self.block_size)
+        return math.ceil(len(self.ids) / self.block_size)
 
     def __getitem__(self, i) -> Dict[str, torch.Tensor]:
         assert i < len(self)
         start_ind = i * self.block_size
         end_ind = (i + 1) * self.block_size
         x_id = self.ids[start_ind:end_ind].copy()
+        return dict(input_ids=torch.from_numpy(x_id).long(), labels=torch.from_numpy(x_id).long())
+
+class MemmapDataset(Dataset):
+    def __init__(self, block_size: int, token_ids, eos_token_id):
+        self.block_size = block_size
+        self.ids = token_ids
+        self.eos_token_id = eos_token_id        
+
+    def __len__(self):
+        return math.ceil(len(self.ids) / self.block_size)
+
+    def __getitem__(self, i) -> Dict[str, torch.Tensor]:
+        assert i < len(self)
+        start_ind = i * self.block_size
+        end_ind = (i + 1) * self.block_size
+        x_id = self.ids[start_ind:end_ind].copy()
+        if x_id[-1] != self.eos_token_id:
+            x_id = np.concatenate([x_id, [self.eos_token_id]])
         return dict(input_ids=torch.from_numpy(x_id).long(), labels=torch.from_numpy(x_id).long())
 
 
