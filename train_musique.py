@@ -139,6 +139,7 @@ def train():
     for question_type in question_types:
 
         questions = raw_instance[question_type]
+        logging.info(f"Question type: {question_type}")
         inferencer = QAInferencer(
             cfg.evaluator.inferencers[0],
             cfg.seed,
@@ -158,7 +159,7 @@ def train():
     all_results = pd.concat(all_results)
 
     all_results.to_excel(
-        f"{args.output_dir}/{raw_instance['id']}inferencer_results.xlsx",
+        f"{args.output_dir}/{raw_instance['id']}_inferencer_results.xlsx",
         index=False,
     )
     metrics = ["rouge1", "llm_accuracy"]
