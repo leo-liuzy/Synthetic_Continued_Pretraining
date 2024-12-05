@@ -11,6 +11,8 @@ from utils.io_utils import jload, jdump
 from tasks.quality import QuALITY
 from utils.io_utils import set_openai_key
 import random
+
+import numpy as np
 import math
 import numpy as np
 from transformers import set_seed
@@ -83,9 +85,7 @@ def generate_three_entity_relations(
     return completion
 
 
-def generate_synthetic_data_for_document(
-    args
-):
+def generate_synthetic_data_for_document(args):
     random.seed(42)
     document_index = args.document_index
     model_name = args.generator_model_name
@@ -106,9 +106,7 @@ def generate_synthetic_data_for_document(
     elif args.no_triplet:
         dir_name += "_no3"
 
-    output_path = (
-        f"{dir_name}/{document.uid}.json"
-    )
+    output_path = f"{dir_name}/{document.uid}.json"
 
     if os.path.exists(output_path):
         output = jload(output_path)
@@ -129,6 +127,12 @@ def generate_synthetic_data_for_document(
     num_generation = len(output) - 2  # 2 = entity_list + summary
     assert num_generation >= 0
     print(f"Existing #generation: {num_generation}")
+
+    if args.max_n_entity_allowed and len(entities) > args.max_n_entity_allowed:
+        rand_ids = np.random.choice(
+            len(entities), args.max_n_entity_allowed, replace=False
+        )
+        entities = [entities[i] for i in rand_ids]
 
     single_count = num_entities = len(entities)
     pair_count = math.comb(num_entities, 2)
@@ -180,6 +184,7 @@ def generate_synthetic_data_for_document(
                 for k in range(j + 1, len(entities)):
                     triple = (entities[i], entities[j], entities[k])
                     triple_list.append(triple)
+        
         if args.sample_triplet_ratio is not None:
             assert isinstance(args.sample_triplet_ratio, float)
             n_sampled_triplets = int(args.sample_triplet_ratio * len(triple_list))
@@ -188,31 +193,35 @@ def generate_synthetic_data_for_document(
         else:
             # I don't understand why but it's the original operation
             random.shuffle(triple_list)
-
-    for entity1, entity2, entity3 in tqdm(triple_list, desc="Generating for triplet-entity"):
-        response = generate_three_entity_relations(
-            document.content,
-            entity1,
-            entity2,
-            entity3,
-            task.openai_system_generate_three_entity_relations,
-            model_name,
-        )
-        if response:
-            output.append(response)
-        jdump(output, output_path)
+        
+        for entity1, entity2, entity3 in tqdm(
+            triple_list, desc="Generating for triplet-entity"
+        ):
+            response = generate_three_entity_relations(
+                document.content,
+                entity1,
+                entity2,
+                entity3,
+                task.openai_system_generate_three_entity_relations,
+                model_name,
+            )
+            if response:
+                output.append(response)
+            jdump(output, output_path)
+        
 
 
 if __name__ == "__main__":
     # seq 0 264 | xargs -P 265 -I {} sh -c 'python data/entigraph.py {} > data/dataset/log/log_gpt4turbo_{}.txt 2>&1'
     os.chdir(os.path.dirname(os.path.dirname(__file__)))
     parser = argparse.ArgumentParser()
-    parser.add_argument('document_index', type=int)
-    parser.add_argument('--dataset', type=str, default="jd-vance")
-    parser.add_argument('--generator_model_name', type=str, default="gpt-4-turbo")
-    parser.add_argument('--no_single', action="store_true", default=False)
-    parser.add_argument('--no_pair', action="store_true", default=False)
-    parser.add_argument('--no_triplet', action="store_true", default=False)
+    parser.add_argument("document_index", type=int)
+    parser.add_argument("--dataset", type=str, default="KE-by-CP")
+    parser.add_argument("--generator_model_name", type=str, default="gpt-4-turbo")
+    parser.add_argument("--max_n_entity_allowed", type=int, default=15)
+    parser.add_argument("--no_single", action="store_true", default=False)
+    parser.add_argument("--no_pair", action="store_true", default=False)
+    parser.add_argument("--no_triplet", action="store_true", default=False)
     parser.add_argument('--sample_triplet_ratio', type=float, default=0.2)
     args = parser.parse_args()
 

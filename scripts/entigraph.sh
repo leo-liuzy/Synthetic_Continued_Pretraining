@@ -1,4 +1,9 @@
-export PYTHONPATH=/data/users/zliu/Synthetic_Continued_Pretraining:$PYTHONPATH
+export PYTHONPATH=/u/zliu/datastor1/Synthetic_Continued_Pretraining:$PYTHONPATH
 
-python data/entigraph.py 0 --dataset jd-vance --sample_triplet_ratio=0.2
-# python data/tokenize_entigraph.py --dataset jd-vance --sample_triplet_ratio=0.2
+for i in {0..9}
+do
+    # python data/entigraph.py $i --dataset musique --max_n_entity_allowed 18 &
+done
+
+# python data/tokenize_entigraph.py --dataset KE-by-CP
+# python data/tokenize_entigraph.py --dataset KE-by-CP --no_triplet

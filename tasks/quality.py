@@ -192,9 +192,15 @@ class QuALITY(Task):
     """
 
     openai_system_generate_entities = OPENAI_API_SYSTEM_QUALITY_GENERATE_ENTITIES
-    openai_system_generate_entity_specific_questions = OPENAI_API_SYSTEM_QUALITY_GENERATE_ENTITY_SPECIFIC_QUESTIONS
-    openai_system_generate_two_entity_relations = OPENAI_API_SYSTEM_QUALITY_GENERATE_TWO_ENTITY_RELATIONS
-    openai_system_generate_three_entity_relations = OPENAI_API_SYSTEM_QUALITY_GENERATE_THREE_ENTITY_RELATIONS
+    openai_system_generate_entity_specific_questions = (
+        OPENAI_API_SYSTEM_QUALITY_GENERATE_ENTITY_SPECIFIC_QUESTIONS
+    )
+    openai_system_generate_two_entity_relations = (
+        OPENAI_API_SYSTEM_QUALITY_GENERATE_TWO_ENTITY_RELATIONS
+    )
+    openai_system_generate_three_entity_relations = (
+        OPENAI_API_SYSTEM_QUALITY_GENERATE_THREE_ENTITY_RELATIONS
+    )
     llama_cot_prompt = QUALITY_FEW_SHOT_COT_PROMPT
 
     @staticmethod
@@ -246,7 +252,9 @@ class QuALITY(Task):
             self._data = QuALITY._load_split(split, dataset)
             self._create_documents()
         elif split in ["all", "50"]:
-            self._data = QuALITY._load_split("train", dataset) + QuALITY._load_split("dev", dataset)
+            self._data = QuALITY._load_split("train", dataset) + QuALITY._load_split(
+                "dev", dataset
+            )
             self._create_documents()
             self._dedup()
             if split == "50":
@@ -273,7 +281,9 @@ class QuALITY(Task):
     ):
         prompts = []
         for document in self.documents:
-            prompts += document.question_prompts(add_document_context, add_thought_process, sep_after_question)
+            prompts += document.question_prompts(
+                add_document_context, add_thought_process, sep_after_question
+            )
 
         return prompts
 
@@ -341,8 +351,12 @@ class QuALITY(Task):
                     return np.nan
                 return a / b
 
-            hard_attempt_rate = _div_nan_if_zero(attempts_stats["attempted_hard_q"], question_stats["hard_q"])
-            hard_accuracy = _div_nan_if_zero(attempts_stats["correct_hard_q"], attempts_stats["attempted_hard_q"])
+            hard_attempt_rate = _div_nan_if_zero(
+                attempts_stats["attempted_hard_q"], question_stats["hard_q"]
+            )
+            hard_accuracy = _div_nan_if_zero(
+                attempts_stats["correct_hard_q"], attempts_stats["attempted_hard_q"]
+            )
             non_hard_attempt_rate = _div_nan_if_zero(
                 attempts_stats["attempted_non_hard_q"], question_stats["non_hard_q"]
             )
@@ -351,12 +365,14 @@ class QuALITY(Task):
                 attempts_stats["attempted_non_hard_q"],
             )
             overall_attempt_rate = _div_nan_if_zero(
-                attempts_stats["attempted_hard_q"] + attempts_stats["attempted_non_hard_q"],
+                attempts_stats["attempted_hard_q"]
+                + attempts_stats["attempted_non_hard_q"],
                 question_stats["hard_q"] + question_stats["non_hard_q"],
             )
             overall_accuracy = _div_nan_if_zero(
                 attempts_stats["correct_hard_q"] + attempts_stats["correct_non_hard_q"],
-                attempts_stats["attempted_hard_q"] + attempts_stats["attempted_non_hard_q"],
+                attempts_stats["attempted_hard_q"]
+                + attempts_stats["attempted_non_hard_q"],
             )
 
             return dict(

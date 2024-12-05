@@ -1,6 +1,6 @@
 #!/bin/bash
-export CUDA_VISIBLE_DEVICES=0,1
-model_name=/home/zliu/shared_resources/models/llama3/hf/Meta-Llama-3-8B
+export CUDA_VISIBLE_DEVICES=4,5,6,7
+model_name=/u/zliu/datastor1/shared_resources/models/llama3/hf/Meta-Llama-3-8B
 gpu_count=$(awk -F',' '{print NF}' <<< "$CUDA_VISIBLE_DEVICES")
 
 
