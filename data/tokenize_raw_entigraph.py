@@ -62,7 +62,7 @@ def tokenize_quality_graph(args):
         file_id = os.path.basename(file)[:-5]
         content = jload(file)
 
-        write_to_memmap_single(tokenize_list(args, [content["article"]]), f"{bin_dirname}/{file_id}.bin")
+        write_to_memmap_single(tokenize_list(args, content[1:]), f"{bin_dirname}/{file_id.split(' ')[0]}.bin")
 
 
 if __name__ == "__main__":
@@ -70,6 +70,7 @@ if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.dirname(__file__)))
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", type=str, default="musique_page")
+
     parser.add_argument(
         "--model_name_or_path", type=str, default=f"{os.environ['SHARE_RES_DIR']}/models/llama3/hf/Meta-Llama-3-8B/"
     )

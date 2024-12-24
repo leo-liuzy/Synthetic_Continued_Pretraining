@@ -112,7 +112,7 @@ if __name__ == "__main__":
     parser.add_argument("--sample_triplet_ratio", type=float, default=None)
     parser.add_argument("--specified_input_dir", type=str, default=None)
     parser.add_argument(
-        "--model_name_or_path", type=str, default="/home/zliu/shared_resources/models/llama3/hf/Meta-Llama-3-8B/"
+        "--model_name_or_path", type=str, default=f"{os.environ['SHARE_RES_DIR']}/models/llama3/hf/Meta-Llama-3-8B/"
     )
     args = parser.parse_args()
 

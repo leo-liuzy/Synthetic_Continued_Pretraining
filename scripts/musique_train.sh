@@ -76,7 +76,7 @@ task_name=musique_page
 
 for rr in 0.0 0.1
 do
-for lr in 1e-04 1e-06 1e-05 1e-07 1e-08
+for lr in 1e-05 1e-06 1e-07 1e-08
 do
 
 for example_id in 2hop__132710_120035 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902
@@ -92,7 +92,7 @@ output_dir="ckpts/${run_name}"
 
 export ACCELERATE_USE_FSDP=true
 
-accelerate launch --config_file="default_config.yaml" \
+accelerate launch --config_file="default_config.yaml" --num_processes ${gpu_count} \
     train_musique.py \
     --model_name=$model_name \
     --block_size=512 \

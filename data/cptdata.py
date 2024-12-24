@@ -70,11 +70,12 @@ class _MemmapDataset(Dataset):
         x_id = self.ids[start_ind:end_ind].copy()
         return dict(input_ids=torch.from_numpy(x_id).long(), labels=torch.from_numpy(x_id).long())
 
+
 class MemmapDataset(Dataset):
     def __init__(self, block_size: int, token_ids, eos_token_id):
         self.block_size = block_size
         self.ids = token_ids
-        self.eos_token_id = eos_token_id        
+        self.eos_token_id = eos_token_id
 
     def __len__(self):
         return math.ceil(len(self.ids) / self.block_size)
