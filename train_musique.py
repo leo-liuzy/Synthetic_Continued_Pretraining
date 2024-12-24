@@ -125,6 +125,7 @@ def train():
         # train = target_dataset
 
         data_module = dict(train_dataset=train, eval_dataset=None)
+        args.eval_on_start = False
         args.eval_strategy = "no"
     else:
         assert config.task_name == "musique_page"

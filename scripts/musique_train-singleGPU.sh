@@ -4,21 +4,21 @@ model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B
 gpu_count=$(awk -F',' '{print NF}' <<< "$CUDA_VISIBLE_DEVICES")
 
 # bs=$gpu_count
-bs=1
+bs=4
 epochs=4
 wd=1e-8
 lr=1e-05
 
 # lr=5e-05
 
-rr=0.0
+rr=0.1
 warmup=0.1
 subsample_ratio=1.0
-task_name=musique
+
 per_device_train_batch_size=1
 grad_acc=$((bs / $gpu_count / $per_device_train_batch_size))
 
-# max_grad_norm=1.0
+max_grad_norm=1.0
 
 
 
@@ -73,16 +73,16 @@ grad_acc=$((bs / $gpu_count / $per_device_train_batch_size))
 # done
 
 
-task_name=musique
+task_name=musique_page
 
-lr_scheduler_type=constant
+lr_scheduler_type=cosine
 
-for max_grad_norm in 0.0 0.5 1.0
-do
+# for max_grad_norm in 0.0 0.5 1.0
+# do
 # for lr in 1e-04 1e-06 1e-05 1e-07 1e-08
 # do
-
-for example_id in 2hop__132710_120035 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902
+# 2hop__132710_120035 
+for example_id in 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902
 do
 
 pretty_name=${model_name##*/}
@@ -111,7 +111,7 @@ accelerate launch --config_file="default_config.yaml" \
     --logging_steps=1 \
     --run_name=$run_name \
     --bf16=True \
-    --output_dir=$output_dir \
+    --output_dir=${output_dir}-singleGPU \
     --max_grad_norm=${max_grad_norm} \
     --dataloader_drop_last=False \
     --weight_decay=$wd \
@@ -129,5 +129,5 @@ accelerate launch --config_file="default_config.yaml" \
     # --load_best_model_at_end=True \
     # --lr_scheduler_type="cosine" \
 done
-done
+# done
 # done
