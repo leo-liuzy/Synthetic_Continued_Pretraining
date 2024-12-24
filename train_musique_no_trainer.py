@@ -125,18 +125,18 @@ def train():
     # loading dataset
     # data_module = get_task_data_module(**asdict(config))
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
-    token_ids = np.memmap(f"data/dataset/bins/{config.task_name}/{config.example_id}.bin", dtype=np.int32, mode="r")
+    target_tokens = np.memmap(f"data/dataset/bins/{config.task_name}/{config.example_id}.bin", dtype=np.int32, mode="r")
 
     # args.gradient_accumulation_steps = max(1, args.gradient_accumulation_steps)
     # args.max_steps = 1 # debug
     if config.task_name == "musique":
-        train = MemmapDataset(config.block_size, token_ids, tokenizer.eos_token_id)
+        train = MemmapDataset(config.block_size, target_tokens, tokenizer.eos_token_id)
         val = None
         args.eval_strategy = "no"
     else:
         assert config.task_name == "musique_page"
-        train = MemmapDataset(config.block_size, token_ids[: int(len(token_ids) * 0.9)], tokenizer.eos_token_id)
-        val = train = MemmapDataset(config.block_size, token_ids[int(len(token_ids) * 0.9) :], tokenizer.eos_token_id)
+        train = MemmapDataset(config.block_size, target_tokens[: int(len(target_tokens) * 0.9)], tokenizer.eos_token_id)
+        val = train = MemmapDataset(config.block_size, target_tokens[int(len(target_tokens) * 0.9) :], tokenizer.eos_token_id)
         args.eval_strategy = "epoch"
 
     # loading model

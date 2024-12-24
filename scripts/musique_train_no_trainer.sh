@@ -10,15 +10,17 @@ wd=1e-8
 # lr=5e-06
 # lr=5e-05
 
-rr=0.0
+rr=1.0
 warmup=0.1
 subsample_ratio=1.0
-task_name=musique
+
 per_device_train_batch_size=1
 grad_acc=$((bs / $gpu_count / $per_device_train_batch_size))
 
 
 lr=1e-05
+task_name=musique_page
+max_grad_norm=1.0
 
 
 # for lr in 1e-05 # 2e-05 8e-06 5e-05 # 1e-05 3e-06 # 4e-06 2e-05  # 5e-07 5e-08 
@@ -72,16 +74,12 @@ lr=1e-05
 # done
 
 
-
-task_name=musique_page
-
-for example_id in 2hop__132710_120035 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 
-# for example_id in 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902
+for example_id in 2hop__132710_120035 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902
 do
 
 pretty_name=${model_name##*/}
 if [ "$subsample_ratio" = "1.0" ]; then
-    run_name="${task_name}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-warmup${warmup}-${pretty_name}"
+    run_name="${task_name}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-warmup${warmup}-norm${max_grad_norm}-${pretty_name}"
 else
     run_name="scaling-subsample_ratio${subsample_ratio}-${task_name}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-warmup${warmup}-${pretty_name}"
 fi
@@ -104,7 +102,8 @@ accelerate launch --config_file="default_config.yaml" \
     --logging_steps=1 \
     --run_name=$run_name \
     --bf16=True \
-    --output_dir="${output_dir}-no-trainer-dev" \
+    --output_dir="${output_dir}-no-trainer" \
+    --max_grad_norm=${max_grad_norm} \
     --dataloader_drop_last=False \
     --weight_decay=$wd \
     --warmup_ratio=$warmup \

@@ -65,15 +65,15 @@ class MemmapDataset(Dataset):
         self.eos_token_id = eos_token_id
 
     def __len__(self):
-        return math.floor(len(self.ids) / self.block_size)
+        return math.ceil(len(self.ids) / self.block_size)
 
     def __getitem__(self, i) -> Dict[str, torch.Tensor]:
         assert i < len(self)
         start_ind = i * self.block_size
         end_ind = (i + 1) * self.block_size
         x_id = self.ids[start_ind:end_ind].copy()
-        # if x_id[-1] != self.eos_token_id:
-        # x_id = np.concatenate([x_id, [self.eos_token_id]])
+        if x_id[-1] != self.eos_token_id:
+            x_id = np.concatenate([x_id, [self.eos_token_id]])
         return dict(input_ids=torch.from_numpy(x_id).long(), labels=torch.from_numpy(x_id).long())
 
 
@@ -120,7 +120,7 @@ def train():
     rehersal_tokens = np.memmap("data/dataset/bins/RedPajama_Data_1T_Sample_train.bin", dtype=np.int32, mode="r")
     rehersal_dataset = MemmapDataset(config.block_size, rehersal_tokens, tokenizer.eos_token_id)
 
-    # args.max_steps = 1 # debug
+    assert config.task_name == "musique_entigraph"
 
     target_dataset = MemmapDataset(
         config.block_size, target_tokens[: int(len(target_tokens) * 0.9)], tokenizer.eos_token_id
@@ -131,13 +131,12 @@ def train():
 
     val = MemmapDataset(config.block_size, target_tokens[int(len(target_tokens) * 0.9) :], tokenizer.eos_token_id)
     data_module = dict(train_dataset=train, eval_dataset=val)
-    args.eval_strategy = "no"
-
+    args.eval_strategy = "epoch"
+    args.eval_on_start = data_module["eval_dataset"] is not None
     # loading model
     model = transformers.AutoModelForCausalLM.from_pretrained(
         config.model_name,
         use_cache=False,
-        torch_dtype=torch.bfloat16,
     )
 
     tokenizer.add_special_tokens({"pad_token": "<pad>"})
@@ -206,7 +205,7 @@ def train():
         max_new_tokens=cfg.generation.max_new_tokens,
         num_return_sequences=cfg.generation.n_decoding_example,
     )
-    raw_instance = io.load_json("data/dataset/raw/id2musique.json")[config.example_id]
+    raw_instance = io.load_json(f"data/dataset/raw/id2musique.json")[config.example_id]
     all_results = []
     for question_type in question_types:
         questions = raw_instance[question_type]

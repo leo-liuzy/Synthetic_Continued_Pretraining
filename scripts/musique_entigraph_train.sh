@@ -45,7 +45,9 @@ output_dir="ckpts/${run_name}"
 
 export ACCELERATE_USE_FSDP=true
 
-accelerate launch --config_file="default_config.yaml" --main_process_port 29600 --num_processes ${gpu_count} \
+accelerate launch --config_file="default_config.yaml" \
+    --main_process_port 29600 \
+    --num_processes ${gpu_count} \
     train_musique_entigraph.py \
     --model_name=$model_name \
     --block_size=2048 \
