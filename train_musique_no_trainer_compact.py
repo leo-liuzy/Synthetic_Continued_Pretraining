@@ -5,6 +5,8 @@ from transformers import AutoTokenizer, GenerationConfig
 import os
 import warnings
 
+from copy import deepcopy
+
 # from data.cptdata import MemmapDataset, _MemmapDataset
 import hydra
 import math
@@ -19,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 from tqdm.auto import tqdm
 from data.cptdata import get_task_data_module
 from knowledge_propagation.modules.inferencers import QAInferencer
-from knowledge_propagation.utils import io
+from knowledge_propagation.utils import io, extractor
 
 from peft import get_peft_model, LoraConfig, TaskType
 import numpy as np
@@ -42,7 +44,7 @@ import datasets
 from torch.utils.data import Dataset
 from accelerate import Accelerator, DistributedType
 from accelerate.logging import get_logger
-from accelerate.utils import set_seed
+from accelerate.utils import set_seed, gather_object
 
 from pathlib import Path
 import pdb
@@ -108,7 +110,7 @@ def init_accelerator(args):
     accelerator_log_kwargs["project_dir"] = args.output_dir
     # logger.info(f"gradient_accumulation_steps: {args.gradient_accumulation_steps}")
     # sleep(1000)
-    accelerator = Accelerator(**accelerator_log_kwargs)
+    accelerator = Accelerator(gradient_accumulation_steps=args.gradient_accumulation_steps, **accelerator_log_kwargs)
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -204,7 +206,7 @@ def train():
     # setting up trainer
 
     train_dataloader = DataLoader(
-        train, shuffle=False, collate_fn=default_data_collator, batch_size=args.per_device_train_batch_size
+        train, shuffle=True, collate_fn=default_data_collator, batch_size=args.per_device_train_batch_size
     )
     logger.info(f"per_device_train_batch_size: {args.per_device_train_batch_size}")
     logger.info(f"len(train_dataloader): {len(train_dataloader)}")
@@ -245,7 +247,7 @@ def train():
         eval_dataloader = accelerator.prepare(eval_dataloader)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / total_batch_size)
+    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_steps = int(args.num_train_epochs * num_update_steps_per_epoch)
     # Afterwards we recalculate our number of training epochs
@@ -285,7 +287,7 @@ def train():
             perplexity = float("inf")
 
         logger.info(
-            f"before training: perplexity: {perplexity} eval_loss: {eval_loss}",
+            f"Eval before training: perplexity: {perplexity} eval_loss: {eval_loss}",
         )
 
     for epoch in range(starting_epoch, args.num_train_epochs):
@@ -294,18 +296,14 @@ def train():
         total_loss = 0
 
         for step, batch in enumerate(train_dataloader):
-            outputs = model(**batch)
-            loss = outputs.loss / args.gradient_accumulation_steps
-            logger.info(f"[rank{accelerator.local_process_index}] loss: {loss.detach().float()}")
+            with accelerator.accumulate(model):
+                outputs = model(**batch)
+                loss = outputs.loss
+                logger.info(f"[rank{accelerator.local_process_index}] loss: {loss.detach().float()}")
 
-            # We keep track of the loss at each epoch
-            total_loss += loss.detach().float()
-            accelerator.backward(loss)
-
-            logger.info(f"[rank{accelerator.local_process_index}] lr: {lr_scheduler.get_last_lr()}")
-
-            # Checks if the accelerator has performed an optimization step behind the scenes
-            if (step + 1) % args.gradient_accumulation_steps == 0:
+                # We keep track of the loss at each epoch
+                total_loss += loss.detach().float()
+                accelerator.backward(loss)
                 if args.max_grad_norm is not None and args.max_grad_norm > 0:
                     grad_norm = (
                         accelerator.clip_grad_norm_(
@@ -316,11 +314,13 @@ def train():
                         .float()
                     )
                     logger.info(f"[rank{accelerator.local_process_index}] grad_norm: {grad_norm}")
-
+                logger.info(f"[rank{accelerator.local_process_index}] lr: {lr_scheduler.get_last_lr()}")
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
+            # Checks if the accelerator has performed an optimization step behind the scenes
+            if accelerator.sync_gradients:
                 progress_bar.update(1)
                 completed_steps += 1
 
@@ -364,7 +364,8 @@ def train():
         )
     del loss
     accelerator.wait_for_everyone()
-    unwrapped_model = accelerator.unwrap_model(model)
+    # unwrapped_model = accelerator.unwrap_model(model)
+    # accelerator.save_model(model, args.output_dir, max_shard_size="1GB", safe_serialization=True)
     # unwrapped_model.save_pretrained(
     #     args.output_dir,
     #     is_main_process=accelerator.is_main_process,
@@ -387,6 +388,8 @@ def train():
         torch.cuda.empty_cache()
     # exit(0)
     logger.info("Starting inferencer")
+    # model = unwrapped_model.to("cuda:0")
+    model.eval()
 
     question_types = [
         "single_hop_efficacy",
@@ -406,41 +409,67 @@ def train():
         num_return_sequences=cfg.generation.n_decoding_example,
     )
     raw_instance = io.load_json(f"data/dataset/raw/id2{config.task_name}.json")[config.example_id]
-    all_results = []
+    # all_results = []
+    all_questions = []
     for question_type in question_types:
         questions = raw_instance[question_type]
+
         logging.info(f"Question type: {question_type}")
-        inferencer = QAInferencer(
-            cfg.evaluator.inferencers[0],
-            cfg.seed,
-            rag_model=None,
-            queries=questions,
-        )
-        result_df = eval_inferencer(
-            inferencer,
-            model,
-            tokenizer=tokenizer,
-            generation_cfg=generation_config,
-        )
-        result_df.insert(0, "question_type", question_type)
-        result_df.insert(0, "id", raw_instance["id"])
-        all_results.append(result_df)
+        all_questions.extend(questions)
+        # inferencer = QAInferencer(
+        #     cfg.evaluator.inferencers[0],
+        #     cfg.seed,
+        #     rag_model=None,
+        #     queries=questions,
+        # )
+        # result_df = eval_inferencer(
+        #     inferencer,
+        #     model,
+        #     tokenizer=tokenizer,
+        #     generation_cfg=generation_config,
+        # )
+        # result_df.insert(0, "question_type", question_type)
+        # result_df.insert(0, "id", raw_instance["id"])
+        # all_results.append(result_df)
+    inferencer = QAInferencer(
+        cfg.evaluator.inferencers[0],
+        cfg.seed,
+        rag_model=None,
+        queries=all_questions,
+    )
+    with accelerator.split_between_processes(all_questions) as questions:
+        answered_qs = []
 
-    all_results = pd.concat(all_results)
+        logger.info(f"[rank{accelerator.local_process_index}] len(questions): {len(questions)}")
+        for question in questions:
+            context = inferencer.prepare_context(question)
+            generated_texts = inferencer.infer_on_context(context, tokenizer, model, generation_config)
 
-    all_results.to_excel(
+            for g_i, generated_text in enumerate(generated_texts):
+                answered_q = deepcopy(question)
+                answered_q["predicted_answer_idx"] = g_i
+                answered_q["predicted_answer"] = extractor.urial_ans_extractor(generated_text)
+                answered_q["predicted_response"] = generated_text
+                answered_qs.append(answered_q)
+
+    answered_qs_gathered = gather_object(answered_qs)
+    answered_qs_gathered = pd.concat(answered_qs_gathered)
+    if inferencer.has_answer:
+        answered_qs_gathered = inferencer.score_df(answered_qs_gathered)
+
+    answered_qs_gathered.to_excel(
         f"{args.output_dir}/{raw_instance['id']}_inferencer_results.xlsx",
         index=False,
     )
-    metrics = ["rouge1", "llm_accuracy"]
-    multi_level_averaging = ["question_type", "id", "question"]
-    result_df = macro_averaging(all_results, metrics, multi_level_averaging).round(2)
-    q_cat_dtype = pd.CategoricalDtype(
-        categories=question_types,
-        ordered=True,
-    )
+    # metrics = ["rouge1", "llm_accuracy"]
+    # multi_level_averaging = ["question_type", "id", "question"]
+    # result_df = macro_averaging(answered_qs_gathered, metrics, multi_level_averaging).round(2)
+    # q_cat_dtype = pd.CategoricalDtype(
+    #     categories=question_types,
+    #     ordered=True,
+    # )
 
-    result_df["question_type"] = result_df["question_type"].astype(q_cat_dtype)
+    # result_df["question_type"] = result_df["question_type"].astype(q_cat_dtype)
     # logger.info(result_df.sort_values(by=["question_type"], inplace=False))
 
 

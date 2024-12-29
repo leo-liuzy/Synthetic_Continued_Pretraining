@@ -82,16 +82,16 @@ lr_scheduler_type=cosine
 # for lr in 1e-04 1e-06 1e-05 1e-07 1e-08
 # do
 # 2hop__132710_120035 
-for example_id in 2hop__258019_119986 # 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902
+for example_id in 2hop__132710_120035 # 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902
 do
 
 pretty_name=${model_name##*/}
 if [ "$subsample_ratio" = "1.0" ]; then
-    run_name="${task_name}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-warmup${warmup}-norm${max_grad_norm}-${lr_scheduler_type}-${pretty_name}"
+    run_name="${task_name}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-warmup${warmup}-norm${max_grad_norm}-${lr_scheduler_type}-ngpu${gpu_count}-${pretty_name}"
 else
     run_name="scaling-subsample_ratio${subsample_ratio}-${task_name}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-warmup${warmup}-${pretty_name}"
 fi
-output_dir="ckpts/${run_name}_debug"
+output_dir="ckpts/${run_name}_debug_gen"
 
 export ACCELERATE_USE_FSDP=true
 
@@ -112,7 +112,7 @@ accelerate launch --config_file="default_config.yaml" \
     --logging_steps=1 \
     --run_name=$run_name \
     --bf16=True \
-    --output_dir=${output_dir}-singleGPU \
+    --output_dir="${output_dir}-trainer" \
     --max_grad_norm=${max_grad_norm} \
     --dataloader_drop_last=False \
     --weight_decay=$wd \
@@ -124,7 +124,8 @@ accelerate launch --config_file="default_config.yaml" \
     --fsdp="full_shard auto_wrap" \
     --task_name=$task_name \
     --eval_on_start=True \
-    --example_id=${example_id} # "2hop__132710_120035"
+    --example_id=${example_id} \
+    --run_train=False \
     
     # --save_total_limit=1 \
     # --load_best_model_at_end=True \

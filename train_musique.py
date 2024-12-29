@@ -44,6 +44,7 @@ class TrainingConfig:
     no_triplet: bool
     train_split: Optional[str] = "1doc"
     valid_split: Optional[str] = "valid"
+    run_train: Optional[bool] = None
 
     sample_triplet_ratio: Optional[float] = None
     specified_bin: Optional[str] = None
@@ -173,7 +174,8 @@ def train():
 
     # setting up trainer
     trainer = transformers.Trainer(model=model, args=args, **data_module)
-    trainer.train()
+    if config.run_train:
+        trainer.train()
     # trainer.model.save_pretrained(save_directory=args.output_dir)
     # trainer.save_model(output_dir=args.output_dir)
     # trainer.save_model()
