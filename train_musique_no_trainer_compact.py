@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field, asdict
 from typing import Optional, List, Dict
 import transformers
-from transformers import AutoTokenizer, GenerationConfig
+from transformers import AutoTokenizer, GenerationConfig, pipeline
 import os
 import warnings
 
@@ -42,7 +42,7 @@ from transformers import (
 )
 import datasets
 from torch.utils.data import Dataset
-from accelerate import Accelerator, DistributedType
+from accelerate import Accelerator, DistributedType, dispatch_model
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed, gather_object
 
@@ -364,13 +364,14 @@ def train():
         )
     del loss
     accelerator.wait_for_everyone()
-    # unwrapped_model = accelerator.unwrap_model(model)
+    unwrapped_model = accelerator.unwrap_model(model)
     # accelerator.save_model(model, args.output_dir, max_shard_size="1GB", safe_serialization=True)
-    # unwrapped_model.save_pretrained(
-    #     args.output_dir,
-    #     is_main_process=accelerator.is_main_process,
-    #     save_function=accelerator.save,
-    # )
+    unwrapped_model.save_pretrained(
+        args.output_dir,
+        is_main_process=accelerator.is_main_process,
+        state_dict=accelerator.get_state_dict(model),
+    )
+    exit(0)
 
     if eval_dataloader:
         del losses, eval_loss
@@ -391,6 +392,32 @@ def train():
     # model = unwrapped_model.to("cuda:0")
     model.eval()
 
+    unwrapped_model = accelerator.unwrap_model(model)
+    from collections import defaultdict
+
+    tmp = defaultdict(list)
+    for n, param in unwrapped_model.named_parameters():
+        if param.grad is not None:
+            tmp[str(param.grad.data.device) + "[grad]"].append(n)
+        tmp[str(param.data.device)].append(n)
+    print(tmp.keys())
+    print(tmp)
+    #     if param.grad is not None:
+    #         param.grad.data = param.grad.data.cpu()
+    #     param.data = param.data.cpu()
+    # unwrapped_model = unwrapped_model.cpu().to("cuda:0")
+
+    # unwrapped_model = unwrapped_model.cpu()
+
+    # Clear any existing gradients
+    # 2. Detach and move parameters to CPU first
+
+    # for param in unwrapped_model.parameters():
+    #     if param.grad is not None:
+    #         param.grad.data = param.grad.data.cpu()
+    #     param.data = param.data.cpu()
+    # unwrapped_model = unwrapped_model.cpu().to("cuda:0")
+    all_questions = []
     question_types = [
         "single_hop_efficacy",
         "multi_hop_efficacy",
@@ -409,8 +436,6 @@ def train():
         num_return_sequences=cfg.generation.n_decoding_example,
     )
     raw_instance = io.load_json(f"data/dataset/raw/id2{config.task_name}.json")[config.example_id]
-    # all_results = []
-    all_questions = []
     for question_type in question_types:
         questions = raw_instance[question_type]
 
@@ -437,30 +462,75 @@ def train():
         rag_model=None,
         queries=all_questions,
     )
+    question = all_questions[0]
+    context = inferencer.prepare_context(question)
+
+    # inputs = tokenizer(context, return_tensors="pt")
+    # inputs = {k: v.to(accelerator.device) for k, v in inputs.items()}
+    # generation_output = model.generate(
+    #     **inputs,
+    # )
+
+    generator = pipeline("text-generation", model=unwrapped_model, tokenizer=tokenizer)
+    generated_texts = generator(context, max_length=generation_config.max_new_tokens)
+
+    # all_results = []
+
+    set_seed(cfg.seed)
+    logger.info("model: ", model)
+    # logger.info("unwrapped_model: ", unwrapped_model)
+    question = all_questions[0]
+    # unwrapped_model.device = "cuda"
+    # model = dispatch_model(model, device_map={"": accelerator.process_index})
+    # context = inferencer.prepare_context(question)
+    accelerator.wait_for_everyone()
+    # generator = pipeline("text-generation", model=unwrapped_model, tokenizer=tokenizer)
+    # generated_texts = generator(context, max_length=generation_config.max_new_tokens)
+    # logger.info(f"generated_texts: {generated_texts}")
+    # from accelerate import PartialState
+
+    # distributed_state = PartialState()
+    # from accelerate.inference import prepare_pippy
+
+    # model = prepare_pippy(
+    #     model,
+    #     example_kwargs=dict(
+    #         generation_config=generation_config,
+    #         pad_token_id=tokenizer.pad_token_id,
+    #         return_dict_in_generate=True,
+    #     ),
+    # )
     with accelerator.split_between_processes(all_questions) as questions:
         answered_qs = []
 
         logger.info(f"[rank{accelerator.local_process_index}] len(questions): {len(questions)}")
-        for question in questions:
-            context = inferencer.prepare_context(question)
-            generated_texts = inferencer.infer_on_context(context, tokenizer, model, generation_config)
+        with torch.no_grad():
+            for question in questions[:1]:
+                context = inferencer.prepare_context(question)
+                inputs = tokenizer(context, return_tensors="pt")
+                inputs = {k: v.to(accelerator.device) for k, v in inputs.items()}
+                generation_output = model.generate(
+                    **inputs,
+                )
+                # generated_texts = generator(context, max_length=generation_config.max_new_tokens)
+                logger.info(f"generated_texts: {generation_output}")
 
-            for g_i, generated_text in enumerate(generated_texts):
-                answered_q = deepcopy(question)
-                answered_q["predicted_answer_idx"] = g_i
-                answered_q["predicted_answer"] = extractor.urial_ans_extractor(generated_text)
-                answered_q["predicted_response"] = generated_text
-                answered_qs.append(answered_q)
+    #         for g_i, generated_text in enumerate(generated_texts):
+    #             answered_q = deepcopy(question)
+    #             answered_q["predicted_answer_idx"] = g_i
+    #             answered_q["predicted_answer"] = extractor.urial_ans_extractor(generated_text)
+    #             answered_q["predicted_response"] = generated_text
+    #             answered_qs.append(answered_q)
 
-    answered_qs_gathered = gather_object(answered_qs)
-    answered_qs_gathered = pd.concat(answered_qs_gathered)
-    if inferencer.has_answer:
-        answered_qs_gathered = inferencer.score_df(answered_qs_gathered)
+    # answered_qs_gathered = gather_object(answered_qs)
+    # answered_qs_gathered = pd.concat(answered_qs_gathered)
+    # if inferencer.has_answer:
+    #     answered_qs_gathered = inferencer.score_df(answered_qs_gathered)
 
-    answered_qs_gathered.to_excel(
-        f"{args.output_dir}/{raw_instance['id']}_inferencer_results.xlsx",
-        index=False,
-    )
+    # answered_qs_gathered.to_excel(
+    #     f"{args.output_dir}/{raw_instance['id']}_inferencer_results.xlsx",
+    #     index=False,
+    # )
     # metrics = ["rouge1", "llm_accuracy"]
     # multi_level_averaging = ["question_type", "id", "question"]
     # result_df = macro_averaging(answered_qs_gathered, metrics, multi_level_averaging).round(2)
