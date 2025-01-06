@@ -17,7 +17,7 @@ warmup=0.1
 subsample_ratio=1.0
 
 per_device_train_batch_size=1
-grad_acc=$((bs / $gpu_count / $per_device_train_batch_size))
+grad_acc=$((bs / gpu_count / per_device_train_batch_size))
 
 max_grad_norm=1.0
 
@@ -41,9 +41,9 @@ export ACCELERATE_USE_FSDP=true
 
 accelerate launch --config_file="default_config.yaml" \
     --main_process_port 29500 \
-    --num_processes ${gpu_count} \
+    --num_processes "${gpu_count}" \
     train_musique_no_trainer_compact.py \
-    --model_name=$model_name \
+    --model_name="$model_name" \
     --block_size=512 \
     --per_device_train_batch_size=${per_device_train_batch_size} \
     --per_device_eval_batch_size=1 \
@@ -54,7 +54,7 @@ accelerate launch --config_file="default_config.yaml" \
     --subsample_ratio=$subsample_ratio \
     --overwrite_output_dir=True \
     --logging_steps=1 \
-    --run_name=$run_name \
+    --run_name="$run_name" \
     --bf16=False \
     --output_dir="${output_dir}-no-trainer" \
     --max_grad_norm=${max_grad_norm} \

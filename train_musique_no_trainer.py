@@ -216,8 +216,8 @@ def train():
 
     overrode_max_train_steps = False
     total_batch_size = args.per_device_train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
-
     num_update_steps_per_epoch = np.ceil(len(train_dataloader) / total_batch_size)
+
     if args.max_steps is None or args.max_steps < 0:
         args.max_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -230,10 +230,10 @@ def train():
         name=args.lr_scheduler_type,
         optimizer=optimizer,
         # https://github.com/huggingface/transformers/issues/26827
-        # num_warmup_steps=args.warmup_steps,
-        # num_training_steps=args.max_steps,
         num_warmup_steps=args.warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_steps * accelerator.num_processes,
+        num_training_steps=args.max_train_steps
+        if overrode_max_train_steps
+        else args.max_train_steps * accelerator.num_processes,
     )
     logger.info(f"len(train_dataloader) [before prepare()]: {len(train_dataloader)}")
     # Prepare everything with our `accelerator`.
@@ -363,84 +363,86 @@ def train():
             step=completed_steps,
         )
     del loss
+
     accelerator.wait_for_everyone()
-    unwrapped_model = accelerator.unwrap_model(model)
-    # unwrapped_model.save_pretrained(
-    #     args.output_dir,
-    #     is_main_process=accelerator.is_main_process,
-    #     save_function=accelerator.save,
+    accelerator.save_model(model, args.output_dir, max_shard_size="1GB", safe_serialization=True)
+    # unwrapped_model =
+    # # unwrapped_model.save_pretrained(
+    # #     args.output_dir,
+    # #     is_main_process=accelerator.is_main_process,
+    # #     save_function=accelerator.save,
+    # # )
+
+    # if eval_dataloader:
+    #     del losses, eval_loss
+    # model.zero_grad()
+    # optimizer.zero_grad()
+    # accelerator.clear(
+    #     model,
+    #     optimizer,
+    #     lr_scheduler,
+    # )
+    # del optimizer, lr_scheduler
+
+    # gc.collect()
+    # if torch.cuda.is_available():
+    #     torch.cuda.empty_cache()
+    # # exit(0)
+    # logger.info("Starting inferencer")
+
+    # question_types = [
+    #     "single_hop_efficacy",
+    #     "multi_hop_efficacy",
+    #     "single_hop_specificity",
+    #     "multi_hop_specificity",
+    # ]
+    # generation_config = GenerationConfig(
+    #     do_sample=cfg.generation.do_sample,
+    #     top_k=cfg.generation.top_k,
+    #     top_p=cfg.generation.top_p,
+    #     temperature=cfg.generation.temperature,
+    #     pad_token_id=tokenizer.pad_token_id,
+    #     bos_token_id=tokenizer.bos_token_id,
+    #     eos_token_id=tokenizer.eos_token_id,
+    #     max_new_tokens=cfg.generation.max_new_tokens,
+    #     num_return_sequences=cfg.generation.n_decoding_example,
+    # )
+    # raw_instance = io.load_json(f"data/dataset/raw/id2{config.task_name}.json")[config.example_id]
+    # all_results = []
+    # for question_type in question_types:
+    #     questions = raw_instance[question_type]
+    #     logging.info(f"Question type: {question_type}")
+    #     inferencer = QAInferencer(
+    #         cfg.evaluator.inferencers[0],
+    #         cfg.seed,
+    #         rag_model=None,
+    #         queries=questions,
+    #     )
+    #     result_df = eval_inferencer(
+    #         inferencer,
+    #         model,
+    #         tokenizer=tokenizer,
+    #         generation_cfg=generation_config,
+    #     )
+    #     result_df.insert(0, "question_type", question_type)
+    #     result_df.insert(0, "id", raw_instance["id"])
+    #     all_results.append(result_df)
+
+    # all_results = pd.concat(all_results)
+
+    # all_results.to_excel(
+    #     f"{args.output_dir}/{raw_instance['id']}_inferencer_results.xlsx",
+    #     index=False,
+    # )
+    # metrics = ["rouge1", "llm_accuracy"]
+    # multi_level_averaging = ["question_type", "id", "question"]
+    # result_df = macro_averaging(all_results, metrics, multi_level_averaging).round(2)
+    # q_cat_dtype = pd.CategoricalDtype(
+    #     categories=question_types,
+    #     ordered=True,
     # )
 
-    if eval_dataloader:
-        del losses, eval_loss
-    model.zero_grad()
-    optimizer.zero_grad()
-    accelerator.clear(
-        model,
-        optimizer,
-        lr_scheduler,
-    )
-    del optimizer, lr_scheduler
-
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    # exit(0)
-    logger.info("Starting inferencer")
-
-    question_types = [
-        "single_hop_efficacy",
-        "multi_hop_efficacy",
-        "single_hop_specificity",
-        "multi_hop_specificity",
-    ]
-    generation_config = GenerationConfig(
-        do_sample=cfg.generation.do_sample,
-        top_k=cfg.generation.top_k,
-        top_p=cfg.generation.top_p,
-        temperature=cfg.generation.temperature,
-        pad_token_id=tokenizer.pad_token_id,
-        bos_token_id=tokenizer.bos_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-        max_new_tokens=cfg.generation.max_new_tokens,
-        num_return_sequences=cfg.generation.n_decoding_example,
-    )
-    raw_instance = io.load_json(f"data/dataset/raw/id2{config.task_name}.json")[config.example_id]
-    all_results = []
-    for question_type in question_types:
-        questions = raw_instance[question_type]
-        logging.info(f"Question type: {question_type}")
-        inferencer = QAInferencer(
-            cfg.evaluator.inferencers[0],
-            cfg.seed,
-            rag_model=None,
-            queries=questions,
-        )
-        result_df = eval_inferencer(
-            inferencer,
-            model,
-            tokenizer=tokenizer,
-            generation_cfg=generation_config,
-        )
-        result_df.insert(0, "question_type", question_type)
-        result_df.insert(0, "id", raw_instance["id"])
-        all_results.append(result_df)
-
-    all_results = pd.concat(all_results)
-
-    all_results.to_excel(
-        f"{args.output_dir}/{raw_instance['id']}_inferencer_results.xlsx",
-        index=False,
-    )
-    metrics = ["rouge1", "llm_accuracy"]
-    multi_level_averaging = ["question_type", "id", "question"]
-    result_df = macro_averaging(all_results, metrics, multi_level_averaging).round(2)
-    q_cat_dtype = pd.CategoricalDtype(
-        categories=question_types,
-        ordered=True,
-    )
-
-    result_df["question_type"] = result_df["question_type"].astype(q_cat_dtype)
+    # result_df["question_type"] = result_df["question_type"].astype(q_cat_dtype)
     # logger.info(result_df.sort_values(by=["question_type"], inplace=False))
 
 
