@@ -1,16 +1,16 @@
 #!/bin/bash
-export CUDA_VISIBLE_DEVICES=0,1,2,3
-# model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B
-model_name=${SHARE_RES_DIR}/models/qwen/Qwen1.5-1.8B
+export CUDA_VISIBLE_DEVICES=$1 # 0,1,2,3
+model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B
+# model_name=${SHARE_RES_DIR}/models/qwen/Qwen1.5-1.8B
 gpu_count=$(awk -F',' '{print NF}' <<< "$CUDA_VISIBLE_DEVICES")
 
 bs=4
 # bs=1
-epochs=1
+epochs=4
 wd=1e-8
 # lr=5e-06
-# lr=1e-05
-lr=0
+lr=1e-05
+# lr=0
 
 rr=0.1
 warmup=0.1
