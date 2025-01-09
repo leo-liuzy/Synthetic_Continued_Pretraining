@@ -94,8 +94,8 @@ def train():
     # setting up trainer
     trainer = transformers.Trainer(model=model, args=args, **data_module)
     trainer.train()
-    trainer.model.save_pretrained(save_directory=args.output_dir)
-    # trainer.save_model(output_dir=args.output_dir)
+    # trainer.model.save_pretrained(save_directory=args.output_dir)
+    trainer.save_model(output_dir=args.output_dir + "/tmp_ckpt") # original line
     # trainer.save_model()
     trainer.accelerator.wait_for_everyone()
 

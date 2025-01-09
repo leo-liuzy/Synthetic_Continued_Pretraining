@@ -29,6 +29,9 @@ import numpy as np
 from time import sleep
 import math
 
+from accelerate.logging import get_logger
+logger = get_logger(__name__)
+
 
 @dataclass
 class TrainingConfig:
@@ -44,6 +47,7 @@ class TrainingConfig:
     no_triplet: bool
     train_split: Optional[str] = "1doc"
     valid_split: Optional[str] = "valid"
+    run_train: Optional[bool] = None
 
     sample_triplet_ratio: Optional[float] = None
     specified_bin: Optional[str] = None
@@ -59,10 +63,16 @@ class TrainingConfig:
 
 
 class MemmapDataset(Dataset):
-    def __init__(self, block_size: int, token_ids, eos_token_id):
+    def __init__(self, block_size: int, token_ids, eos_token_id, pad_token_id):
+        logger.info(f"block_size: {block_size}")
+        logger.info(f"len(token_ids): {len(token_ids)}")
+        logger.info(f"eos_token_id: {eos_token_id}")
+        logger.info(f"pad_token_id: {pad_token_id}")
         self.block_size = block_size
         self.ids = token_ids
         self.eos_token_id = eos_token_id
+        self.pad_token_id = pad_token_id
+        logger.info(f"len(self): {math.ceil(len(self.ids) / self.block_size)}")
 
     def __len__(self):
         return math.ceil(len(self.ids) / self.block_size)
@@ -74,8 +84,14 @@ class MemmapDataset(Dataset):
         x_id = self.ids[start_ind:end_ind].copy()
         if x_id[-1] != self.eos_token_id:
             x_id = np.concatenate([x_id, [self.eos_token_id]])
-        return dict(input_ids=torch.from_numpy(x_id).long(), labels=torch.from_numpy(x_id).long())
 
+        if len(x_id) < self.block_size:
+            # pad
+            x_id = np.concatenate([x_id, [self.pad_token_id] * (self.block_size - len(x_id) + 1)])
+        try:
+            return dict(input_ids=torch.from_numpy(x_id).long(), labels=torch.from_numpy(x_id).long())
+        except Exception as e:
+            print(x_id)
 
 class CPTDataset(Dataset):
     def __init__(
@@ -111,16 +127,21 @@ def train():
     # loading dataset
     # data_module = get_task_data_module(**asdict(config))
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
-
+    # START: special operation for Llama3 for missing padding token
+    tokenizer.add_special_tokens({"pad_token": "<pad>"})
+    # Just to suppress tokenizer's warning. Supposedly do nothing.
+    tokenizer.sep_token = tokenizer.cls_token = tokenizer.mask_token = tokenizer.pad_token
+    # END: special operation for Llama3 for missing padding token
+    
     target_tokens = np.memmap(f"data/dataset/bins/{config.task_name}/{config.example_id}.bin", dtype=np.int32, mode="r")
     logging.info(f"# target_tokens: {len(target_tokens)}")
 
     rehersal_tokens = np.memmap("data/dataset/bins/RedPajama_Data_1T_Sample_train.bin", dtype=np.int32, mode="r")
-    rehersal_dataset = MemmapDataset(config.block_size, rehersal_tokens, tokenizer.eos_token_id)
+    rehersal_dataset = MemmapDataset(config.block_size, rehersal_tokens, tokenizer.eos_token_id, tokenizer.pad_token_id)
 
     # args.max_steps = 1 # debug
     if config.task_name == "musique":
-        target_dataset = MemmapDataset(config.block_size, target_tokens, tokenizer.eos_token_id)
+        target_dataset = MemmapDataset(config.block_size, target_tokens, tokenizer.eos_token_id, tokenizer.pad_token_id)
         logging.info(f"# target_dataset example: {len(target_dataset)}")
         train = CPTDataset(target_dataset, rehersal_dataset, config.rehersal_rate)
         # train = target_dataset
@@ -131,13 +152,21 @@ def train():
         assert config.task_name == "musique_page"
 
         target_dataset = MemmapDataset(
-            config.block_size, target_tokens[: int(len(target_tokens) * 0.9)], tokenizer.eos_token_id
+            config.block_size, 
+            target_tokens[: int(len(target_tokens) * 0.9)], 
+            tokenizer.eos_token_id, 
+            tokenizer.pad_token_id
         )
         logging.info(f"# target_dataset example: {len(target_dataset)}")
         train = CPTDataset(target_dataset, rehersal_dataset, config.rehersal_rate)
         # train = target_dataset
 
-        val = MemmapDataset(config.block_size, target_tokens[int(len(target_tokens) * 0.9) :], tokenizer.eos_token_id)
+        val = MemmapDataset(
+            config.block_size, 
+            target_tokens[int(len(target_tokens) * 0.9) :], 
+            tokenizer.eos_token_id,
+            tokenizer.pad_token_id
+        )
         data_module = dict(train_dataset=train, eval_dataset=val)
         args.eval_strategy = "epoch"
     args.eval_on_start = data_module["eval_dataset"] is not None
@@ -146,13 +175,9 @@ def train():
         config.model_name,
         use_cache=False,
     )
-
-    tokenizer.add_special_tokens({"pad_token": "<pad>"})
-    # Just to suppress tokenizer's warning. Supposedly do nothing.
-    tokenizer.sep_token = tokenizer.cls_token = tokenizer.mask_token = tokenizer.pad_token
-
-    model.resize_token_embeddings(len(tokenizer))
+    model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8, mean_resizing=False)
     model.config.pad_token_id = tokenizer.pad_token_id
+    logger.info(f"Model: {model}")
 
     if config.use_peft:
         args.output_dir += "_lora"
@@ -172,83 +197,16 @@ def train():
     logging.info(f"Output dir: {args.output_dir}")
 
     # setting up trainer
+    # model.train()
     trainer = transformers.Trainer(model=model, args=args, **data_module)
     trainer.train()
-    # trainer.model.save_pretrained(save_directory=args.output_dir)
-    # trainer.save_model(output_dir=args.output_dir)
+    # method 1
+    trainer.save_model(output_dir=args.output_dir + "/tmp_ckpt") # original line
+    
     # trainer.save_model()
     trainer.accelerator.wait_for_everyone()
-
-    with hydra.initialize(config_path="../KE-by-CP/configs", version_base=None):
-        cfg = hydra.compose(config_name="fft.yaml")
-    # ! This is important
-    # leave a model pointer to the model in trainer
-    model = trainer.model
-    # clear internal pointer in trainer/accelerator
-    trainer.accelerator.free_memory(trainer.model, trainer.optimizer, trainer.lr_scheduler)
-    del trainer.model, trainer.optimizer, trainer.lr_scheduler
-    del trainer
-    # clear cache to make spaces in GPU and CPU
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
     # sleep(200)
-    logging.info("Starting inferencer")
 
-    question_types = [
-        "single_hop_efficacy",
-        "multi_hop_efficacy",
-        "single_hop_specificity",
-        "multi_hop_specificity",
-    ]
-    generation_config = GenerationConfig(
-        do_sample=cfg.generation.do_sample,
-        top_k=cfg.generation.top_k,
-        top_p=cfg.generation.top_p,
-        temperature=cfg.generation.temperature,
-        pad_token_id=tokenizer.pad_token_id,
-        bos_token_id=tokenizer.bos_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-        max_new_tokens=cfg.generation.max_new_tokens,
-        num_return_sequences=cfg.generation.n_decoding_example,
-    )
-    raw_instance = io.load_json(f"data/dataset/raw/id2{config.task_name}.json")[config.example_id]
-    all_results = []
-    for question_type in question_types:
-        questions = raw_instance[question_type]
-        logging.info(f"Question type: {question_type}")
-        inferencer = QAInferencer(
-            cfg.evaluator.inferencers[0],
-            cfg.seed,
-            rag_model=None,
-            queries=questions,
-        )
-        result_df = eval_inferencer(
-            inferencer,
-            model,
-            tokenizer=tokenizer,
-            generation_cfg=generation_config,
-        )
-        result_df.insert(0, "question_type", question_type)
-        result_df.insert(0, "id", raw_instance["id"])
-        all_results.append(result_df)
-
-    all_results = pd.concat(all_results)
-
-    all_results.to_excel(
-        f"{args.output_dir}/{raw_instance['id']}_inferencer_results.xlsx",
-        index=False,
-    )
-    metrics = ["rouge1", "llm_accuracy"]
-    multi_level_averaging = ["question_type", "id", "question"]
-    result_df = macro_averaging(all_results, metrics, multi_level_averaging).round(2)
-    q_cat_dtype = pd.CategoricalDtype(
-        categories=question_types,
-        ordered=True,
-    )
-
-    result_df["question_type"] = result_df["question_type"].astype(q_cat_dtype)
     # logger.info(result_df.sort_values(by=["question_type"], inplace=False))
 
 

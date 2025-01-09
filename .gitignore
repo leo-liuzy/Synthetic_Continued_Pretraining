@@ -168,3 +168,4 @@ wandb/
 ckpts/
 .history/
 **/*.tar.gz
+chkpts/

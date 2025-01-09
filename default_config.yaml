@@ -3,7 +3,7 @@ compute_environment: LOCAL_MACHINE
 debug: false
 distributed_type: FSDP
 downcast_bf16: 'no'
-enable_cpu_affinity: false
+enable_cpu_affinity: true
 fsdp_config:
   fsdp_sharding_strategy: FULL_SHARD
   fsdp_activation_checkpointing: true
@@ -14,23 +14,24 @@ fsdp_config:
   # weights prefetching
   fsdp_backward_prefetch: BACKWARD_PRE
   # offload
-  fsdp_offload_params: true
+  fsdp_offload_params: false
   # model loading
   fsdp_cpu_ram_efficient_loading: true 
   # efficient checkpointing
-  fsdp_state_dict_type: SHARDED_STATE_DICT 
+  fsdp_state_dict_type: FULL_STATE_DICT 
   # parameters syncing
   fsdp_sync_module_states: true
   # parameters summoning
   fsdp_use_orig_params: true
   
   fsdp_transformer_layer_cls_to_wrap: LlamaDecoderLayer
+  # fsdp_transformer_layer_cls_to_wrap: Qwen2DecoderLayer
 machine_rank: 0
 main_training_function: main
 mixed_precision: bf16
 num_machines: 1
 num_processes: 1
-rdzv_backend: static
+rdzv_backend: c10d
 same_network: true
 tpu_env: []
 tpu_use_cluster: false

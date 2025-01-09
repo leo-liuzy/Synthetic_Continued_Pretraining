@@ -205,7 +205,7 @@ def train():
         max_new_tokens=cfg.generation.max_new_tokens,
         num_return_sequences=cfg.generation.n_decoding_example,
     )
-    raw_instance = io.load_json(f"data/dataset/raw/id2musique.json")[config.example_id]
+    raw_instance = io.load_json("data/dataset/raw/id2musique.json")[config.example_id]
     all_results = []
     for question_type in question_types:
         questions = raw_instance[question_type]

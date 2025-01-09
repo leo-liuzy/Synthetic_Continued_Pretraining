@@ -77,13 +77,10 @@ task_name=musique
 
 lr_scheduler_type=constant
 
-<<<<<<< HEAD
 for rr in 0.0 0.1
 do
 for lr in 1e-05 1e-06 1e-07 1e-08
-=======
 for max_grad_norm in 0.0 0.5 1.0
->>>>>>> a70a2cf9097f441c9b9d45a45051d78d888a4d1f
 do
 # for lr in 1e-04 1e-06 1e-05 1e-07 1e-08
 # do
@@ -101,12 +98,9 @@ output_dir="ckpts/${run_name}"
 
 export ACCELERATE_USE_FSDP=true
 
-<<<<<<< HEAD
-accelerate launch --config_file="default_config.yaml" --num_processes ${gpu_count} \
-=======
 accelerate launch --config_file="default_config.yaml" \
+    --num_processes ${gpu_count} \
     --main_process_port 29600 \
->>>>>>> a70a2cf9097f441c9b9d45a45051d78d888a4d1f
     train_musique.py \
     --model_name=$model_name \
     --block_size=512 \
@@ -140,4 +134,5 @@ accelerate launch --config_file="default_config.yaml" \
     # --lr_scheduler_type="cosine" \
 done
 done
-# done
+done
+done
