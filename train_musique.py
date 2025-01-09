@@ -201,8 +201,10 @@ def train():
     trainer = transformers.Trainer(model=model, args=args, **data_module)
     trainer.train()
     # method 1
+    from time import time
+    start = time()
     trainer.save_model(output_dir=args.output_dir + "/tmp_ckpt") # original line
-    
+    logger.info(f"save_model time: {time() - start}")
     # trainer.save_model()
     trainer.accelerator.wait_for_everyone()
     # sleep(200)

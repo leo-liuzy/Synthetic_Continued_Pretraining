@@ -5,15 +5,15 @@ model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B
 gpu_count=$(awk -F',' '{print NF}' <<< "$CUDA_VISIBLE_DEVICES")
 
 # bs=$gpu_count
-bs=4
-epochs=4
-wd=1e-8
-lr=1e-05
+bs=16
+epochs=2
+wd=0.01
+lr=5e-06
 
 # lr=5e-05
 
 rr=0.1
-warmup=0.1
+warmup=0.05
 subsample_ratio=1.0
 
 per_device_train_batch_size=1
@@ -22,7 +22,7 @@ grad_acc=$((bs / gpu_count / per_device_train_batch_size))
 max_grad_norm=1.0
 
 
-task_name=musique_page
+task_name=musique_entigraph
 
 lr_scheduler_type=cosine
 
@@ -31,7 +31,7 @@ lr_scheduler_type=cosine
 # for lr in 1e-04 1e-06 1e-05 1e-07 1e-08
 # do
 # 2hop__132710_120035 
-for example_id in 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902 # 2hop__132710_120035 # 
+for example_id in 2hop__132710_120035 # 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902
 do
 
 pretty_name=${model_name##*/}
@@ -43,13 +43,12 @@ fi
 output_dir="ckpts/${run_name}"
 
 export ACCELERATE_USE_FSDP=true
-export CUDA_LAUNCH_BLOCKING=1
-echo "Example ID: ${example_id}"
+# export CUDA_LAUNCH_BLOCKING=1
 
 accelerate launch --config_file="default_config.yaml" \
-    --main_process_port 29500 \
+    --main_process_port 29700 \
     --num_processes ${gpu_count} \
-    train_musique.py \
+    train_musique_entigraph.py \
     --model_name=$model_name \
     --block_size=512 \
     --per_device_train_batch_size=${per_device_train_batch_size} \
