@@ -1,5 +1,5 @@
 #!/bin/bash
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=2
 model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B
 gpu_count=$(awk -F',' '{print NF}' <<< "$CUDA_VISIBLE_DEVICES")
 
@@ -20,15 +20,11 @@ task_name=musique_entigraph
 for bs in 16
 do
 
-# lr=5e-06
-# lr=5e-05
-
 per_device_train_batch_size=1
 grad_acc=$((bs / $gpu_count / $per_device_train_batch_size))
 
-# for lr in 5e-06 # 
-for lr in 5e-05
-
+for lr in 5e-06 # 
+# for lr in 5e-05
 do
 
 for example_id in 2hop__132710_120035 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902

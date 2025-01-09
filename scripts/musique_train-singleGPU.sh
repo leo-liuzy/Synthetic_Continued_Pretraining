@@ -91,7 +91,7 @@ if [ "$subsample_ratio" = "1.0" ]; then
 else
     run_name="scaling-subsample_ratio${subsample_ratio}-${task_name}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-warmup${warmup}-${pretty_name}"
 fi
-output_dir="ckpts/${run_name}_debug"
+output_dir="ckpts/${run_name}"
 
 export ACCELERATE_USE_FSDP=true
 
