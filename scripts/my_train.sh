@@ -1,15 +1,17 @@
 #!/bin/bash
-export CUDA_VISIBLE_DEVICES=4,5,6,7
-model_name=/u/zliu/datastor1/shared_resources/models/llama3/hf/Meta-Llama-3-8B
+export CUDA_VISIBLE_DEVICES=$1
+# model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B
+model_name=${SHARE_RES_DIR}/models/qwen/Qwen1.5-1.8B
 gpu_count=$(awk -F',' '{print NF}' <<< "$CUDA_VISIBLE_DEVICES")
 
 
 
-bs=16
+bs=4
 epochs=2
 wd=0.01
 lr=5e-06
 # lr=5e-05
+
 rr=0.1
 warmup=0.05
 subsample_ratio=1.0
@@ -53,10 +55,12 @@ accelerate launch --config_file="default_config.yaml" \
     --save_strategy="no" \
     --lr_scheduler_type="cosine" \
     --log_level="info" \
+    --report_to="none" \
     --fsdp="full_shard auto_wrap" \
     --no_pair \
     --no_triplet \
-    --fsdp_config="default_config.yaml"
+    --fsdp_config="default_config.yaml" \
+    --max_steps=1
     # --sample_triplet_ratio=0.2 \
     # --trimE \
     # --use_peft=True

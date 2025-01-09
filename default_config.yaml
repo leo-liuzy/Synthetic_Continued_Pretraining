@@ -14,11 +14,11 @@ fsdp_config:
   # weights prefetching
   fsdp_backward_prefetch: BACKWARD_PRE
   # offload
-  fsdp_offload_params: true
+  fsdp_offload_params: false
   # model loading
   fsdp_cpu_ram_efficient_loading: true 
   # efficient checkpointing
-  fsdp_state_dict_type: SHARDED_STATE_DICT 
+  fsdp_state_dict_type: FULL_STATE_DICT 
   # parameters syncing
   fsdp_sync_module_states: true
   # parameters summoning

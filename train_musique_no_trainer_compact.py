@@ -29,7 +29,7 @@ import numpy as np
 from experiments.musique.inference_only import eval_inferencer, macro_averaging
 import torch
 from torch.utils.data import DataLoader
-
+from time import time, sleep
 from transformers import (
     CONFIG_MAPPING,
     MODEL_MAPPING,
@@ -54,13 +54,15 @@ from torch.cuda.amp import autocast
 
 
 class MemmapDataset(Dataset):
-    def __init__(self, block_size: int, token_ids, eos_token_id):
+    def __init__(self, block_size: int, token_ids, eos_token_id, pad_token_id):
         logger.info(f"block_size: {block_size}")
         logger.info(f"len(token_ids): {len(token_ids)}")
         logger.info(f"eos_token_id: {eos_token_id}")
+        logger.info(f"pad_token_id: {pad_token_id}")
         self.block_size = block_size
         self.ids = token_ids
         self.eos_token_id = eos_token_id
+        self.pad_token_id = pad_token_id
         logger.info(f"len(self): {math.ceil(len(self.ids) / self.block_size)}")
 
     def __len__(self):
@@ -73,8 +75,14 @@ class MemmapDataset(Dataset):
         x_id = self.ids[start_ind:end_ind].copy()
         if x_id[-1] != self.eos_token_id:
             x_id = np.concatenate([x_id, [self.eos_token_id]])
-        return dict(input_ids=torch.from_numpy(x_id).long(), labels=torch.from_numpy(x_id).long())
 
+        if len(x_id) < self.block_size:
+            # pad
+            x_id = np.concatenate([x_id, [self.pad_token_id] * (self.block_size - len(x_id) + 1)])
+        try:
+            return dict(input_ids=torch.from_numpy(x_id).long(), labels=torch.from_numpy(x_id).long())
+        except Exception as e:
+            print(x_id)
 
 @dataclass
 class TrainingConfig:
@@ -152,37 +160,49 @@ def train():
     # loading dataset
     # data_module = get_task_data_module(**asdict(config))
     tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+    # START: special operation for Llama3 for missing padding token
+    tokenizer.add_special_tokens({"pad_token": "<pad>"})
+    # Just to suppress tokenizer's warning. Supposedly do nothing.
+    tokenizer.sep_token = tokenizer.cls_token = tokenizer.mask_token = tokenizer.pad_token
+    # END: special operation for Llama3 for missing padding token
     target_tokens = np.memmap(f"data/dataset/bins/{config.task_name}/{config.example_id}.bin", dtype=np.int32, mode="r")
     logger.info(f"total # tokens: {len(target_tokens)}")
 
     # args.gradient_accumulation_steps = max(1, args.gradient_accumulation_steps)
     # args.max_steps = 1 # debug
     if config.task_name == "musique":
-        train = MemmapDataset(config.block_size, target_tokens, tokenizer.eos_token_id)
+        train = MemmapDataset(config.block_size, target_tokens, tokenizer.eos_token_id, tokenizer.pad_token_id)
         val = None
         args.eval_strategy = "no"
     else:
         assert config.task_name == "musique_page"
-        logger.info(f"Train dataset")
-        train = MemmapDataset(config.block_size, target_tokens[: int(len(target_tokens) * 0.9)], tokenizer.eos_token_id)
-        logger.info(f"Eval dataset")
-        val = MemmapDataset(config.block_size, target_tokens[int(len(target_tokens) * 0.9) :], tokenizer.eos_token_id)
+        logger.info("Train dataset")
+        train = MemmapDataset(
+            config.block_size,
+            target_tokens[: int(len(target_tokens) * 0.9)],
+            tokenizer.eos_token_id,
+            tokenizer.pad_token_id,
+        )
+        logger.info("Eval dataset")
+        val = MemmapDataset(
+            config.block_size,
+            target_tokens[int(len(target_tokens) * 0.9) :],
+            tokenizer.eos_token_id,
+            tokenizer.pad_token_id,
+        )
         args.eval_strategy = "epoch"
     logger.info(f"block size: {config.block_size}")
     logger.info(f"# train instances: {len(train)}")
     # loading model
     model = transformers.AutoModelForCausalLM.from_pretrained(
         config.model_name,
+        torch_dtype=torch.bfloat16,
         use_cache=False,
     )
-    logger.info(f"Model: {model}")
-
-    tokenizer.add_special_tokens({"pad_token": "<pad>"})
-    # Just to suppress tokenizer's warning. Supposedly do nothing.
-    tokenizer.sep_token = tokenizer.cls_token = tokenizer.mask_token = tokenizer.pad_token
-
     model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8, mean_resizing=False)
     model.config.pad_token_id = tokenizer.pad_token_id
+    logger.info(f"Model: {model}")
+
 
     if config.use_peft:
         args.output_dir += "_lora"
@@ -201,10 +221,7 @@ def train():
 
     logging.info(f"Output dir: {args.output_dir}")
 
-    with hydra.initialize(config_path="../KE-by-CP/configs", version_base=None):
-        cfg = hydra.compose(config_name="fft.yaml")
     # setting up trainer
-
     train_dataloader = DataLoader(
         train, shuffle=True, collate_fn=default_data_collator, batch_size=args.per_device_train_batch_size
     )
@@ -217,13 +234,14 @@ def train():
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
 
     overrode_max_train_steps = False
-    total_batch_size = args.per_device_train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
-
-    num_update_steps_per_epoch = np.ceil(len(train_dataloader) / total_batch_size)
+    # Note: train_dataloader is already chunked in per_device_train_batch_size
+    num_update_steps_per_epoch = np.ceil(len(train_dataloader) / accelerator.num_processes / args.gradient_accumulation_steps)
     if args.max_steps is None or args.max_steps < 0:
         args.max_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
+    logger.info(f"overrode_max_train_steps: {overrode_max_train_steps}")
     if not args.warmup_steps:
+        # args.warmup_steps = 2
         args.warmup_steps = np.floor(args.max_steps * args.warmup_ratio)
 
     logger.info(f"warmup_steps: {args.warmup_steps}")
@@ -232,8 +250,6 @@ def train():
         name=args.lr_scheduler_type,
         optimizer=optimizer,
         # https://github.com/huggingface/transformers/issues/26827
-        # num_warmup_steps=args.warmup_steps,
-        # num_training_steps=args.max_steps,
         num_warmup_steps=args.warmup_steps * accelerator.num_processes,
         num_training_steps=args.max_steps * accelerator.num_processes,
     )
@@ -257,7 +273,7 @@ def train():
     total_batch_size = args.per_device_train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
-    logger.info(f"  Num examples = {len(train_dataloader)}")
+    logger.info(f"  Num batchs / epoch = {len(train_dataloader)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.per_device_train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
@@ -362,158 +378,169 @@ def train():
             log_info,
             step=completed_steps,
         )
-    del loss
     accelerator.wait_for_everyone()
+    # save method 1:
+    # start = time()
+    # accelerator.save_model(model, args.output_dir + "_savemodel", max_shard_size="1GB", safe_serialization=True)
+    # logger.info(f"accelerator.save_model: {time() - start}")
+    # save method 2
+    start = time()
+    logger.info(f"type(model): {type(model)}")
     unwrapped_model = accelerator.unwrap_model(model)
     # accelerator.save_model(model, args.output_dir, max_shard_size="1GB", safe_serialization=True)
     unwrapped_model.save_pretrained(
-        args.output_dir,
+        args.output_dir + "/tmp_ckpt",
         is_main_process=accelerator.is_main_process,
         state_dict=accelerator.get_state_dict(model),
+        save_function=accelerator.save,
     )
-    exit(0)
+    logger.info(f"unwrapped_model.save_pretrained: {time() - start}")
 
-    if eval_dataloader:
-        del losses, eval_loss
-    model.zero_grad()
-    optimizer.zero_grad()
-    accelerator.clear(
-        model,
-        optimizer,
-        lr_scheduler,
-    )
-    del optimizer, lr_scheduler
-
-    gc.collect()
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    # exit(0)
-    logger.info("Starting inferencer")
-    # model = unwrapped_model.to("cuda:0")
-    model.eval()
-
-    unwrapped_model = accelerator.unwrap_model(model)
-    from collections import defaultdict
-
-    tmp = defaultdict(list)
-    for n, param in unwrapped_model.named_parameters():
-        if param.grad is not None:
-            tmp[str(param.grad.data.device) + "[grad]"].append(n)
-        tmp[str(param.data.device)].append(n)
-    print(tmp.keys())
-    print(tmp)
-    #     if param.grad is not None:
-    #         param.grad.data = param.grad.data.cpu()
-    #     param.data = param.data.cpu()
-    # unwrapped_model = unwrapped_model.cpu().to("cuda:0")
-
-    # unwrapped_model = unwrapped_model.cpu()
-
-    # Clear any existing gradients
-    # 2. Detach and move parameters to CPU first
-
-    # for param in unwrapped_model.parameters():
-    #     if param.grad is not None:
-    #         param.grad.data = param.grad.data.cpu()
-    #     param.data = param.data.cpu()
-    # unwrapped_model = unwrapped_model.cpu().to("cuda:0")
-    all_questions = []
-    question_types = [
-        "single_hop_efficacy",
-        "multi_hop_efficacy",
-        "single_hop_specificity",
-        "multi_hop_specificity",
-    ]
-    generation_config = GenerationConfig(
-        do_sample=cfg.generation.do_sample,
-        top_k=cfg.generation.top_k,
-        top_p=cfg.generation.top_p,
-        temperature=cfg.generation.temperature,
-        pad_token_id=tokenizer.pad_token_id,
-        bos_token_id=tokenizer.bos_token_id,
-        eos_token_id=tokenizer.eos_token_id,
-        max_new_tokens=cfg.generation.max_new_tokens,
-        num_return_sequences=cfg.generation.n_decoding_example,
-    )
-    raw_instance = io.load_json(f"data/dataset/raw/id2{config.task_name}.json")[config.example_id]
-    for question_type in question_types:
-        questions = raw_instance[question_type]
-
-        logging.info(f"Question type: {question_type}")
-        all_questions.extend(questions)
-        # inferencer = QAInferencer(
-        #     cfg.evaluator.inferencers[0],
-        #     cfg.seed,
-        #     rag_model=None,
-        #     queries=questions,
-        # )
-        # result_df = eval_inferencer(
-        #     inferencer,
-        #     model,
-        #     tokenizer=tokenizer,
-        #     generation_cfg=generation_config,
-        # )
-        # result_df.insert(0, "question_type", question_type)
-        # result_df.insert(0, "id", raw_instance["id"])
-        # all_results.append(result_df)
-    inferencer = QAInferencer(
-        cfg.evaluator.inferencers[0],
-        cfg.seed,
-        rag_model=None,
-        queries=all_questions,
-    )
-    question = all_questions[0]
-    context = inferencer.prepare_context(question)
-
-    # inputs = tokenizer(context, return_tensors="pt")
-    # inputs = {k: v.to(accelerator.device) for k, v in inputs.items()}
-    # generation_output = model.generate(
-    #     **inputs,
+    # START: clear out accelerator to save memory for inference
+    # del loss
+    # if eval_dataloader:
+    #     del losses, eval_loss
+    # model.zero_grad()
+    # optimizer.zero_grad()
+    # accelerator.clear(
+    #     model,
+    #     optimizer,
+    #     lr_scheduler,
     # )
+    # del optimizer, lr_scheduler, model
 
-    generator = pipeline("text-generation", model=unwrapped_model, tokenizer=tokenizer)
-    generated_texts = generator(context, max_length=generation_config.max_new_tokens)
+    # gc.collect()
+    # if torch.cuda.is_available():
+    #     torch.cuda.empty_cache()
+    # END: clear out accelerator to save memory for inference
+    # logger.info("Starting inferencer")
+    # with hydra.initialize(config_path="../KE-by-CP/configs", version_base=None):
+    #     cfg = hydra.compose(config_name="fft.yaml")
+    # model = unwrapped_model.to("cuda:0")
+    # model.eval()
 
-    # all_results = []
+    # unwrapped_model = accelerator.unwrap_model(model)
+    # from collections import defaultdict
 
-    set_seed(cfg.seed)
-    logger.info("model: ", model)
-    # logger.info("unwrapped_model: ", unwrapped_model)
-    question = all_questions[0]
-    # unwrapped_model.device = "cuda"
-    # model = dispatch_model(model, device_map={"": accelerator.process_index})
+    # tmp = defaultdict(list)
+    # for n, param in unwrapped_model.named_parameters():
+    #     if param.grad is not None:
+    #         tmp[str(param.grad.data.device) + "[grad]"].append(n)
+    #     tmp[str(param.data.device)].append(n)
+    # print(tmp.keys())
+    # print(tmp)
+    # #     if param.grad is not None:
+    # #         param.grad.data = param.grad.data.cpu()
+    # #     param.data = param.data.cpu()
+    # # unwrapped_model = unwrapped_model.cpu().to("cuda:0")
+
+    # # unwrapped_model = unwrapped_model.cpu()
+
+    # # Clear any existing gradients
+    # # 2. Detach and move parameters to CPU first
+
+    # # for param in unwrapped_model.parameters():
+    # #     if param.grad is not None:
+    # #         param.grad.data = param.grad.data.cpu()
+    # #     param.data = param.data.cpu()
+    # # unwrapped_model = unwrapped_model.cpu().to("cuda:0")
+    # all_questions = []
+    # question_types = [
+    #     "single_hop_efficacy",
+    #     "multi_hop_efficacy",
+    #     "single_hop_specificity",
+    #     "multi_hop_specificity",
+    # ]
+    # generation_config = GenerationConfig(
+    #     do_sample=cfg.generation.do_sample,
+    #     top_k=cfg.generation.top_k,
+    #     top_p=cfg.generation.top_p,
+    #     temperature=cfg.generation.temperature,
+    #     pad_token_id=tokenizer.pad_token_id,
+    #     bos_token_id=tokenizer.bos_token_id,
+    #     eos_token_id=tokenizer.eos_token_id,
+    #     max_new_tokens=cfg.generation.max_new_tokens,
+    #     num_return_sequences=cfg.generation.n_decoding_example,
+    # )
+    # raw_instance = io.load_json(f"data/dataset/raw/id2{config.task_name}.json")[config.example_id]
+    # for question_type in question_types:
+    #     questions = raw_instance[question_type]
+
+    #     logging.info(f"Question type: {question_type}")
+    #     all_questions.extend(questions)
+    #     # inferencer = QAInferencer(
+    #     #     cfg.evaluator.inferencers[0],
+    #     #     cfg.seed,
+    #     #     rag_model=None,
+    #     #     queries=questions,
+    #     # )
+    #     # result_df = eval_inferencer(
+    #     #     inferencer,
+    #     #     model,
+    #     #     tokenizer=tokenizer,
+    #     #     generation_cfg=generation_config,
+    #     # )
+    #     # result_df.insert(0, "question_type", question_type)
+    #     # result_df.insert(0, "id", raw_instance["id"])
+    #     # all_results.append(result_df)
+    # inferencer = QAInferencer(
+    #     cfg.evaluator.inferencers[0],
+    #     cfg.seed,
+    #     rag_model=None,
+    #     queries=all_questions,
+    # )
+    # question = all_questions[0]
     # context = inferencer.prepare_context(question)
-    accelerator.wait_for_everyone()
+
+    # # inputs = tokenizer(context, return_tensors="pt")
+    # # inputs = {k: v.to(accelerator.device) for k, v in inputs.items()}
+    # # generation_output = model.generate(
+    # #     **inputs,
+    # # )
+
     # generator = pipeline("text-generation", model=unwrapped_model, tokenizer=tokenizer)
     # generated_texts = generator(context, max_length=generation_config.max_new_tokens)
-    # logger.info(f"generated_texts: {generated_texts}")
-    # from accelerate import PartialState
 
-    # distributed_state = PartialState()
-    # from accelerate.inference import prepare_pippy
+    # # all_results = []
 
-    # model = prepare_pippy(
-    #     model,
-    #     example_kwargs=dict(
-    #         generation_config=generation_config,
-    #         pad_token_id=tokenizer.pad_token_id,
-    #         return_dict_in_generate=True,
-    #     ),
-    # )
-    with accelerator.split_between_processes(all_questions) as questions:
-        answered_qs = []
+    # set_seed(cfg.seed)
+    # logger.info("model: ", model)
+    # # logger.info("unwrapped_model: ", unwrapped_model)
+    # question = all_questions[0]
+    # # unwrapped_model.device = "cuda"
+    # # model = dispatch_model(model, device_map={"": accelerator.process_index})
+    # # context = inferencer.prepare_context(question)
+    # accelerator.wait_for_everyone()
+    # # generator = pipeline("text-generation", model=unwrapped_model, tokenizer=tokenizer)
+    # # generated_texts = generator(context, max_length=generation_config.max_new_tokens)
+    # # logger.info(f"generated_texts: {generated_texts}")
+    # # from accelerate import PartialState
 
-        logger.info(f"[rank{accelerator.local_process_index}] len(questions): {len(questions)}")
-        with torch.no_grad():
-            for question in questions[:1]:
-                context = inferencer.prepare_context(question)
-                inputs = tokenizer(context, return_tensors="pt")
-                inputs = {k: v.to(accelerator.device) for k, v in inputs.items()}
-                generation_output = model.generate(
-                    **inputs,
-                )
-                # generated_texts = generator(context, max_length=generation_config.max_new_tokens)
-                logger.info(f"generated_texts: {generation_output}")
+    # # distributed_state = PartialState()
+    # # from accelerate.inference import prepare_pippy
+
+    # # model = prepare_pippy(
+    # #     model,
+    # #     example_kwargs=dict(
+    # #         generation_config=generation_config,
+    # #         pad_token_id=tokenizer.pad_token_id,
+    # #         return_dict_in_generate=True,
+    # #     ),
+    # # )
+    # with accelerator.split_between_processes(all_questions) as questions:
+    #     answered_qs = []
+
+    #     logger.info(f"[rank{accelerator.local_process_index}] len(questions): {len(questions)}")
+    #     with torch.no_grad():
+    #         for question in questions[:1]:
+    #             context = inferencer.prepare_context(question)
+    #             inputs = tokenizer(context, return_tensors="pt")
+    #             inputs = {k: v.to(accelerator.device) for k, v in inputs.items()}
+    #             generation_output = model.generate(
+    #                 **inputs,
+    #             )
+    #             # generated_texts = generator(context, max_length=generation_config.max_new_tokens)
+    #             logger.info(f"generated_texts: {generation_output}")
 
     #         for g_i, generated_text in enumerate(generated_texts):
     #             answered_q = deepcopy(question)

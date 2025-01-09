@@ -1,6 +1,7 @@
 #!/bin/bash
 export CUDA_VISIBLE_DEVICES=$1 #0,1,2,3
 model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B
+# model_name=${SHARE_RES_DIR}/models/qwen/Qwen1.5-1.8B
 gpu_count=$(awk -F',' '{print NF}' <<< "$CUDA_VISIBLE_DEVICES")
 
 # bs=$gpu_count
@@ -16,7 +17,7 @@ warmup=0.1
 subsample_ratio=1.0
 
 per_device_train_batch_size=1
-grad_acc=$((bs / $gpu_count / $per_device_train_batch_size))
+grad_acc=$((bs / gpu_count / per_device_train_batch_size))
 
 max_grad_norm=1.0
 
@@ -42,6 +43,7 @@ fi
 output_dir="ckpts/${run_name}_debug"
 
 export ACCELERATE_USE_FSDP=true
+export CUDA_LAUNCH_BLOCKING=1
 
 accelerate launch --config_file="default_config.yaml" \
     --main_process_port 29500 \
@@ -69,6 +71,7 @@ accelerate launch --config_file="default_config.yaml" \
     --save_strategy="no" \
     --lr_scheduler_type=${lr_scheduler_type} \
     --log_level="info" \
+    --report_to="none" \
     --fsdp="full_shard auto_wrap" \
     --task_name=$task_name \
     --eval_on_start=True \
@@ -76,6 +79,10 @@ accelerate launch --config_file="default_config.yaml" \
     # --save_total_limit=1 \
     # --load_best_model_at_end=True \
     # --lr_scheduler_type="cosine" \
+python eval_musique.py --task_name=$task_name --example_id=${example_id} --model_name="${model_name}" --output_dir="${output_dir}-trainer"
+
+echo "Removing checkpoint"
+# rm -rf "${output_dir}-trainer/tmp_ckpt"
 done
 # done
 # done

@@ -27,6 +27,7 @@ import numpy as np
 from experiments.musique.inference_only import eval_inferencer, macro_averaging
 import torch
 from torch.utils.data import DataLoader
+from time import time, sleep
 
 from transformers import (
     CONFIG_MAPPING,
@@ -231,9 +232,7 @@ def train():
         optimizer=optimizer,
         # https://github.com/huggingface/transformers/issues/26827
         num_warmup_steps=args.warmup_steps * accelerator.num_processes,
-        num_training_steps=args.max_train_steps
-        if overrode_max_train_steps
-        else args.max_train_steps * accelerator.num_processes,
+        num_training_steps=args.max_steps if overrode_max_train_steps else args.max_steps * accelerator.num_processes,
     )
     logger.info(f"len(train_dataloader) [before prepare()]: {len(train_dataloader)}")
     # Prepare everything with our `accelerator`.
@@ -362,17 +361,27 @@ def train():
             log_info,
             step=completed_steps,
         )
-    del loss
 
-    accelerator.wait_for_everyone()
-    accelerator.save_model(model, args.output_dir, max_shard_size="1GB", safe_serialization=True)
-    # unwrapped_model =
-    # # unwrapped_model.save_pretrained(
-    # #     args.output_dir,
-    # #     is_main_process=accelerator.is_main_process,
-    # #     save_function=accelerator.save,
-    # # )
+    # accelerator.wait_for_everyone()
+    # save method 1:
+    # start = time()
+    # accelerator.save_model(model, args.output_dir + "_savemodel", max_shard_size="1GB", safe_serialization=True)
+    # logger.info(f"accelerator.save_model: {time() - start}")
+    # save method 2:
+    logger.info(f"type(model): {type(model)}")
+    start = time()
+    unwrapped_model = accelerator.unwrap_model(model)
 
+    logger.info(f"type(unwrapped_model): {type(unwrapped_model)}")
+    unwrapped_model.save_pretrained(
+        args.output_dir + "_savepretrained",
+        is_main_process=accelerator.is_main_process,
+        save_function=accelerator.save,
+        state_dict=accelerator.get_state_dict(model),
+    )
+    logger.info(f"unwrapped_model.save_pretrained: {time() - start}")
+    # START: clear out accelerator to save memory for inference
+    # del loss
     # if eval_dataloader:
     #     del losses, eval_loss
     # model.zero_grad()
@@ -382,13 +391,20 @@ def train():
     #     optimizer,
     #     lr_scheduler,
     # )
-    # del optimizer, lr_scheduler
+    # del optimizer, lr_scheduler, model
 
     # gc.collect()
     # if torch.cuda.is_available():
     #     torch.cuda.empty_cache()
-    # # exit(0)
-    # logger.info("Starting inferencer")
+    # END: clear out accelerator to save memory for inference
+
+    logger.info("Starting inferencer")
+    # unwrapped_model =
+    # # unwrapped_model.save_pretrained(
+    # #     args.output_dir,
+    # #     is_main_process=accelerator.is_main_process,
+    # #     save_function=accelerator.save,
+    # # )
 
     # question_types = [
     #     "single_hop_efficacy",
@@ -420,7 +436,7 @@ def train():
     #     )
     #     result_df = eval_inferencer(
     #         inferencer,
-    #         model,
+    #         unwrapped_model,
     #         tokenizer=tokenizer,
     #         generation_cfg=generation_config,
     #     )

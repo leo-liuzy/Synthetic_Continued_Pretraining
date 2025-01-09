@@ -31,7 +31,7 @@ do
 
 pretty_name=${model_name##*/}
 if [ "$subsample_ratio" = "1.0" ]; then
-    run_name="${task_name}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-warmup${warmup}-norm${max_grad_norm}-${lr_scheduler_type}-ngpu${gpu_count}-${pretty_name}"
+    run_name="${task_name}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-gradacc${grad_acc}-wd${wd}-warmup${warmup}-norm${max_grad_norm}-${lr_scheduler_type}-ngpu${gpu_count}-${pretty_name}"
 else
     run_name="scaling-subsample_ratio${subsample_ratio}-${task_name}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-warmup${warmup}-${pretty_name}"
 fi
@@ -39,8 +39,10 @@ output_dir="ckpts/${run_name}_debug"
 
 export ACCELERATE_USE_FSDP=true
 
+echo "Example ID: ${example_id}"
+
 accelerate launch --config_file="default_config.yaml" \
-    --main_process_port 29500 \
+    --main_process_port 29600 \
     --num_processes "${gpu_count}" \
     train_musique_no_trainer_compact.py \
     --model_name="$model_name" \
@@ -67,10 +69,13 @@ accelerate launch --config_file="default_config.yaml" \
     --log_level="info" \
     --fsdp="full_shard auto_wrap" \
     --task_name=$task_name \
-    --example_id=${example_id} # "2hop__132710_120035"
-    # --save_total_limit=1 \
-    # --load_best_model_at_end=True \
-    # --lr_scheduler_type="cosine" \
+    --example_id=${example_id}
+
+python eval_musique.py --task_name=$task_name --example_id=${example_id} --model_name="${model_name}" --output_dir="${output_dir}-no-trainer"
+
+echo "Removing checkpoint"
+rm -rf "${output_dir}-no-trainer/tmp_ckpt"
+
 done
 
 
