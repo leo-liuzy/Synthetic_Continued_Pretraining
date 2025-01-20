@@ -201,20 +201,93 @@ def train():
     trainer = transformers.Trainer(model=model, args=args, **data_module)
     trainer.train()
     # method 1
-    from time import time
-    start = time()
-    trainer.save_model(output_dir=args.output_dir + "/tmp_ckpt") # original line
-    logger.info(f"save_model time: {time() - start}")
+    # from time import time
+    # start = time()
+    # trainer.save_model(output_dir=args.output_dir + "/tmp_ckpt") # original line
+    # logger.info(f"save_model time: {time() - start}")
     
     # start = time()
     # unwrapped_model = trainer.accelerator.unwrap_model(trainer.model)
     # logging.info("type(unwrapped_model): {type(unwrapped_model)}")
     
     # unwrapped_model.save_pretrained(args.output_dir + "/tmp_ckpt")
-    # logger.info(f"save_model time: {time() - start}"
+    # logger.info(f"save_model time: {time() - start}")
     # trainer.save_model()
     trainer.accelerator.wait_for_everyone()
     # sleep(200)
+    
+    with hydra.initialize(config_path="../KE-by-CP/configs", version_base=None):
+        cfg = hydra.compose(config_name="fft.yaml")
+    # ! This is important
+    # leave a model pointer to the model in trainer
+    model = trainer.model
+    # clear internal pointer in trainer/accelerator
+    trainer.accelerator.free_memory(trainer.model, trainer.optimizer, trainer.lr_scheduler)
+    del trainer.model, trainer.optimizer, trainer.lr_scheduler
+    del trainer
+    # clear cache to make spaces in GPU and CPU
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    # sleep(200)
+    logging.info("Starting inferencer")
+
+    question_types = [
+        "single_hop_efficacy",
+        "multi_hop_efficacy",
+        "single_hop_specificity",
+        "multi_hop_specificity",
+    ]
+    generation_config = GenerationConfig(
+        do_sample=cfg.generation.do_sample,
+        top_k=cfg.generation.top_k,
+        top_p=cfg.generation.top_p,
+        temperature=cfg.generation.temperature,
+        pad_token_id=tokenizer.pad_token_id,
+        bos_token_id=tokenizer.bos_token_id,
+        eos_token_id=tokenizer.eos_token_id,
+        max_new_tokens=cfg.generation.max_new_tokens,
+        num_return_sequences=cfg.generation.n_decoding_example,
+    )
+    raw_instance = io.load_json(f"data/dataset/raw/id2{config.task_name}.json")[config.example_id]
+    all_results = []
+    
+    for question_type in question_types:
+        questions = raw_instance[question_type]
+        logging.info(f"Question type: {question_type}")
+        inferencer = QAInferencer(
+            cfg.evaluator.inferencers[0],
+            cfg.seed,
+            rag_model=None,
+            queries=questions,
+        )
+        result_df = eval_inferencer(
+            inferencer,
+            model,
+            tokenizer=tokenizer,
+            generation_cfg=generation_config,
+        )
+        result_df.insert(0, "question_type", question_type)
+        result_df.insert(0, "id", raw_instance["id"])
+        all_results.append(result_df)
+
+    all_results = pd.concat(all_results)
+    os.makedirs(f"{args.output_dir}/inference_results", exist_ok=True)
+    
+    all_results.to_excel(
+        f"{args.output_dir}/{raw_instance['id']}_inferencer_results.xlsx",
+        index=False,
+    )
+    metrics = ["rouge1", "llm_accuracy"]
+    multi_level_averaging = ["question_type", "id", "question"]
+    result_df = macro_averaging(all_results, metrics, multi_level_averaging).round(2)
+    q_cat_dtype = pd.CategoricalDtype(
+        categories=question_types,
+        ordered=True,
+    )
+
+    result_df["question_type"] = result_df["question_type"].astype(q_cat_dtype)
 
     # logger.info(result_df.sort_values(by=["question_type"], inplace=False))
 

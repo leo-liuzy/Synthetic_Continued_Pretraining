@@ -140,7 +140,7 @@ def train():
     rehersal_dataset = MemmapDataset(config.block_size, rehersal_tokens, tokenizer.eos_token_id, tokenizer.pad_token_id)
 
     # args.max_steps = 1 # debug
-    if config.task_name == "musique":
+    if config.task_name in ["musique_joint", "musique_single"]:
         target_dataset = MemmapDataset(config.block_size, target_tokens, tokenizer.eos_token_id, tokenizer.pad_token_id)
         logging.info(f"# target_dataset example: {len(target_dataset)}")
         train = CPTDataset(target_dataset, rehersal_dataset, config.rehersal_rate)
@@ -149,8 +149,8 @@ def train():
         data_module = dict(train_dataset=train, eval_dataset=None)
         args.eval_strategy = "no"
     else:
-        assert config.task_name == "musique_page"
-
+        assert config.task_name in ["musique_page_joint", "musique_page_single"]
+        # split 10% of the text for validation
         target_dataset = MemmapDataset(
             config.block_size, 
             target_tokens[: int(len(target_tokens) * 0.9)], 

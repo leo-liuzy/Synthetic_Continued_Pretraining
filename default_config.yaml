@@ -13,8 +13,8 @@ fsdp_config:
   fsdp_forward_prefetch: true
   # weights prefetching
   fsdp_backward_prefetch: BACKWARD_PRE
-  # offload
-  fsdp_offload_params: true
+  # CPU offload
+  fsdp_offload_params: false
   # model loading
   fsdp_cpu_ram_efficient_loading: true 
   # efficient checkpointing
