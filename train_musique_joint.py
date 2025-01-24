@@ -48,6 +48,8 @@ class TrainingConfig:
     train_split: Optional[str] = "1doc"
     valid_split: Optional[str] = "valid"
     run_train: Optional[bool] = None
+    single: Optional[bool] = False
+    joint: Optional[bool] = False
 
     sample_triplet_ratio: Optional[float] = None
     specified_bin: Optional[str] = None
@@ -132,6 +134,10 @@ def train():
     # Just to suppress tokenizer's warning. Supposedly do nothing.
     tokenizer.sep_token = tokenizer.cls_token = tokenizer.mask_token = tokenizer.pad_token
     # END: special operation for Llama3 for missing padding token
+    if config.single:
+        config.task_name += "_single"
+    if config.joint:
+        config.task_name += "_joint"
     
     target_tokens = np.memmap(f"data/dataset/bins/{config.task_name}/{config.example_id}.bin", dtype=np.int32, mode="r")
     logging.info(f"# target_tokens: {len(target_tokens)}")
@@ -140,16 +146,8 @@ def train():
     rehersal_dataset = MemmapDataset(config.block_size, rehersal_tokens, tokenizer.eos_token_id, tokenizer.pad_token_id)
 
     # args.max_steps = 1 # debug
-    if config.task_name in ["musique_joint", "musique_single"]:
-        target_dataset = MemmapDataset(config.block_size, target_tokens, tokenizer.eos_token_id, tokenizer.pad_token_id)
-        logging.info(f"# target_dataset example: {len(target_dataset)}")
-        train = CPTDataset(target_dataset, rehersal_dataset, config.rehersal_rate)
-        # train = target_dataset
-
-        data_module = dict(train_dataset=train, eval_dataset=None)
-        args.eval_strategy = "no"
-    else:
-        assert config.task_name in ["musique_page_joint", "musique_page_single"]
+    if "musique_page" in config.task_name:
+        assert config.task_name in ["musique_page_joint", "musique_page_single", "musique_page", "musique_page_single_joint"]
         # split 10% of the text for validation
         target_dataset = MemmapDataset(
             config.block_size, 
@@ -169,6 +167,16 @@ def train():
         )
         data_module = dict(train_dataset=train, eval_dataset=val)
         args.eval_strategy = "epoch"
+    else:
+        assert config.task_name in ["musique_joint", "musique_single", "musique", "musique_single_joint"]
+        target_dataset = MemmapDataset(config.block_size, target_tokens, tokenizer.eos_token_id, tokenizer.pad_token_id)
+        logging.info(f"# target_dataset example: {len(target_dataset)}")
+        train = CPTDataset(target_dataset, rehersal_dataset, config.rehersal_rate)
+        # train = target_dataset
+
+        data_module = dict(train_dataset=train, eval_dataset=None)
+        args.eval_strategy = "no"
+    
     args.eval_on_start = data_module["eval_dataset"] is not None
     # loading model
     model = transformers.AutoModelForCausalLM.from_pretrained(

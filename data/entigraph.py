@@ -15,6 +15,7 @@ import random
 import numpy as np
 import math
 import numpy as np
+from copy import deepcopy
 from transformers import set_seed
 
 
@@ -106,6 +107,11 @@ def generate_synthetic_data_for_document(args):
     elif args.no_triplet:
         dir_name += "_no3"
 
+    if args.max_pair_entity_allowed:
+        dir_name += f"_pairE{args.max_pair_entity_allowed}"
+    if args.max_triplet_entity_allowed:
+        dir_name += f"_tripletE{args.max_triplet_entity_allowed}"
+        
     output_path = f"{dir_name}/{document.uid}.json"
 
     if os.path.exists(output_path):
@@ -128,19 +134,11 @@ def generate_synthetic_data_for_document(args):
     assert num_generation >= 0
     print(f"Existing #generation: {num_generation}")
 
-    if args.max_n_entity_allowed and len(entities) > args.max_n_entity_allowed:
-        rand_ids = np.random.choice(
-            len(entities), args.max_n_entity_allowed, replace=False
-        )
-        entities = [entities[i] for i in rand_ids]
-
-    single_count = num_entities = len(entities)
-    pair_count = math.comb(num_entities, 2)
-    triple_count = math.comb(num_entities, 3)
+    single_count = len(entities)
     # iterate over entities and generate questions
     if num_generation < single_count * (not args.no_single):
         # we don't skip it and we haven't generated for single entity
-        for entity in tqdm(entities, desc="Generating for single-entity"):
+        for entity in tqdm(entities, desc=f"Generating for single-entity [{document.uid}]"):
             # if _entity_already_generated(entity, output):
             #     continue
             response = generate_entity_specific_questions(
@@ -152,16 +150,24 @@ def generate_synthetic_data_for_document(args):
             if response:
                 output.append(response)
             jdump(output, output_path)
-
+    
+    pair_entities = deepcopy(entities)
+    if args.max_pair_entity_allowed and len(pair_entities) > args.max_pair_entity_allowed:
+        
+        rand_ids = np.random.choice(
+            len(pair_entities), args.max_pair_entity_allowed, replace=False
+        )
+        pair_entities = [pair_entities[i] for i in rand_ids]
+    pair_count = math.comb(len(pair_entities), 2)
     # iterate over pairs of entities and generate relations
     if num_generation < single_count * (not args.no_single) + pair_count * (not args.no_pair):
         # we don't skip it and we haven't generated for pair entity
         pair_list = []
-        for i in range(len(entities)):
-            for j in range(i + 1, len(entities)):
-                pair = (entities[i], entities[j])
+        for i in range(len(pair_entities)):
+            for j in range(i + 1, len(pair_entities)):
+                pair = (pair_entities[i], pair_entities[j])
                 pair_list.append(pair)
-        for entity1, entity2 in tqdm(pair_list, desc="Generating for pair-entity"):
+        for entity1, entity2 in tqdm(pair_list, desc=f"Generating for pair-entity [{document.uid}]"):
             # if _pair_already_generated(entity1, entity2, output):
             #     continue
             response = generate_two_entity_relations(
@@ -174,15 +180,22 @@ def generate_synthetic_data_for_document(args):
             if response:
                 output.append(response)
             jdump(output, output_path)
-
+    
+    triplet_entities = deepcopy(entities)
+    if args.max_triplet_entity_allowed and len(triplet_entities) > args.max_triplet_entity_allowed:
+        rand_ids = np.random.choice(
+            len(triplet_entities), args.max_triplet_entity_allowed, replace=False
+        )
+        triplet_entities = [triplet_entities[i] for i in rand_ids]
     # iterate over triples of entities and generate relations
     triple_list = []
+    triple_count = math.comb(len(triplet_entities), 3)
     if num_generation < single_count * (not args.no_single) + pair_count * (not args.no_pair) + triple_count * (not args.no_triplet):
         triple_list = []
-        for i in range(len(entities)):
-            for j in range(i + 1, len(entities)):
-                for k in range(j + 1, len(entities)):
-                    triple = (entities[i], entities[j], entities[k])
+        for i in range(len(triplet_entities)):
+            for j in range(i + 1, len(triplet_entities)):
+                for k in range(j + 1, len(triplet_entities)):
+                    triple = (triplet_entities[i], triplet_entities[j], triplet_entities[k])
                     triple_list.append(triple)
         
         if args.sample_triplet_ratio is not None:
@@ -195,7 +208,7 @@ def generate_synthetic_data_for_document(args):
             random.shuffle(triple_list)
         
         for entity1, entity2, entity3 in tqdm(
-            triple_list, desc="Generating for triplet-entity"
+            triple_list, desc=f"Generating for triplet-entity [{document.uid}]"
         ):
             response = generate_three_entity_relations(
                 document.content,
@@ -218,11 +231,12 @@ if __name__ == "__main__":
     parser.add_argument("document_index", type=int)
     parser.add_argument("--dataset", type=str, default="KE-by-CP")
     parser.add_argument("--generator_model_name", type=str, default="gpt-4-turbo")
-    parser.add_argument("--max_n_entity_allowed", type=int, default=15)
+    parser.add_argument("--max_pair_entity_allowed", type=int, default=None)
+    parser.add_argument("--max_triplet_entity_allowed", type=int, default=8)
     parser.add_argument("--no_single", action="store_true", default=False)
     parser.add_argument("--no_pair", action="store_true", default=False)
     parser.add_argument("--no_triplet", action="store_true", default=False)
-    parser.add_argument('--sample_triplet_ratio', type=float, default=0.2)
+    parser.add_argument('--sample_triplet_ratio', type=float, default=None)
     args = parser.parse_args()
 
     generate_synthetic_data_for_document(args)

@@ -5,15 +5,15 @@ model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B
 gpu_count=$(awk -F',' '{print NF}' <<< "$CUDA_VISIBLE_DEVICES")
 
 # bs=$gpu_count
-bs=4
-epochs=4
-wd=1e-8
-lr=1e-05
+bs=16
+epochs=2
+wd=0.01
+lr=5e-06
 
 # lr=5e-05
 
 rr=0.1
-warmup=0.1
+warmup=0.05
 subsample_ratio=1.0
 
 per_device_train_batch_size=1
@@ -21,19 +21,18 @@ grad_acc=$((bs / gpu_count / per_device_train_batch_size))
 
 max_grad_norm=1.0
 
-# task_name=musique_single
-task_name=musique_page_single
+
+task_name=musique_entigraph
 
 lr_scheduler_type=cosine
 
 # for max_grad_norm in 0.0 0.5 1.0
 # do
-for task_name in  musique_single # musique_page_single
-do
-# for lr in 1e-05 1e-06 1e-04 1e-07 1e-08
-for lr in 5e-05 # 5e-06 5e-07 5e-08
-do
-for example_id in start-50instances
+# for lr in 1e-04 1e-06 1e-05 1e-07 1e-08
+# do
+# 2hop__132710_120035 
+for example_id in 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902
+# 2hop__132710_120035
 do
 
 pretty_name=${model_name##*/}
@@ -45,13 +44,12 @@ fi
 output_dir="ckpts/${run_name}"
 
 export ACCELERATE_USE_FSDP=true
-export CUDA_LAUNCH_BLOCKING=1
-echo "Example ID: ${example_id}"
+# export CUDA_LAUNCH_BLOCKING=1
 
 accelerate launch --config_file="default_config.yaml" \
-    --main_process_port 29500 \
+    --main_process_port 29700 \
     --num_processes ${gpu_count} \
-    train_musique_joint.py \
+    train_musique_entigraph.py \
     --model_name=$model_name \
     --block_size=512 \
     --per_device_train_batch_size=${per_device_train_batch_size} \
@@ -82,13 +80,10 @@ accelerate launch --config_file="default_config.yaml" \
     # --save_total_limit=1 \
     # --load_best_model_at_end=True \
     # --lr_scheduler_type="cosine" \
-# python eval_musique.py --task_name=$task_name --example_id=${example_id} --model_name="${model_name}" --output_dir="${output_dir}-trainer"
+python eval_musique.py eval_musique_joint.py --data_dir /u/zliu/datastor1/KE-by-CP/data/musique_c_small --data_file examples-page.jsonl --example_id=${example_id} --model_name="${model_name}" --output_dir="${output_dir}-trainer"
 
-python eval_musique_joint.py --data_dir /u/zliu/datastor1/KE-by-CP/data/musique_c_small --data_file examples-page.jsonl --model_name="${model_name}" --output_dir="${output_dir}-trainer"
-# e.g. :
-# CUDA_VISIBLE_DEVICES=7 python eval_musique_joint.py --data_dir /u/zliu/datastor1/KE-by-CP/data/musique_c_small --data_file examples-page.jsonl --model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B --output_dir=/u/zliu/datastor1/Synthetic_Continued_Pretraining/ckpts/musique_page_joint-lr1e-05-rr0.1-epochs4-bs4-wd1e-8-warmup0.1-norm1.0-cosine-ngpu4-Meta-Llama-3-8B-trainer
+# echo "Removing checkpoint"
 # rm -rf "${output_dir}-trainer/tmp_ckpt"
-
 done
-done
-done
+# done
+# done

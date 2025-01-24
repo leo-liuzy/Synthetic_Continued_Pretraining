@@ -28,9 +28,12 @@ lr_scheduler_type=cosine
 
 # for max_grad_norm in 0.0 0.5 1.0
 # do
-for lr in 1e-05 1e-06 1e-04 1e-07 1e-08
+# for lr in 1e-05 1e-06 1e-04 1e-07 1e-08
+# do
+for task_name in musique_joint # musique_page_joint
 do
-
+for lr in 5e-08 1e-08 # 5e-05 5e-06 5e-07 
+do
 for example_id in 50instances
 do
 
@@ -82,10 +85,11 @@ accelerate launch --config_file="default_config.yaml" \
     # --lr_scheduler_type="cosine" \
 # python eval_musique.py --task_name=$task_name --example_id=${example_id} --model_name="${model_name}" --output_dir="${output_dir}-trainer"
 
-python eval_musique_joint.py.py --data_dir /u/zliu/datastor1/KE-by-CP/data/musique_c_small --data_file examples-page.jsonl --example_id=${example_id} --model_name="${model_name}" --output_dir="${output_dir}-trainer"
+python eval_musique_joint.py --data_dir /u/zliu/datastor1/KE-by-CP/data/musique_c_small --data_file examples-page.jsonl --example_id=${example_id} --model_name="${model_name}" --output_dir="${output_dir}-trainer"
 # e.g. :
 # CUDA_VISIBLE_DEVICES=7 python eval_musique_joint.py --data_dir /u/zliu/datastor1/KE-by-CP/data/musique_c_small --data_file examples-page.jsonl --model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B --output_dir=/u/zliu/datastor1/Synthetic_Continued_Pretraining/ckpts/musique_page_joint-lr1e-05-rr0.1-epochs4-bs4-wd1e-8-warmup0.1-norm1.0-cosine-ngpu4-Meta-Llama-3-8B-trainer
+rm -rf "${output_dir}-trainer/tmp_ckpt"
 
 done
 done
-# done
+done
