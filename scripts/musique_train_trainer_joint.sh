@@ -52,7 +52,7 @@ echo "Example ID: ${example_id}"
 accelerate launch --config_file="default_config.yaml" \
     --main_process_port 29500 \
     --num_processes ${gpu_count} \
-    train_musique_joint.py \
+    train_musique.py \
     --model_name=$model_name \
     --block_size=512 \
     --per_device_train_batch_size=${per_device_train_batch_size} \

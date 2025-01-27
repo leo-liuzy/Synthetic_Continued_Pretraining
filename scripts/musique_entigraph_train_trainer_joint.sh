@@ -22,7 +22,7 @@ grad_acc=$((bs / gpu_count / per_device_train_batch_size))
 max_grad_norm=1.0
 
 
-task_name=musique_entigraph
+task_name=musique_entigraph_joint
 
 lr_scheduler_type=cosine
 
@@ -31,7 +31,7 @@ lr_scheduler_type=cosine
 # for lr in 1e-04 1e-06 1e-05 1e-07 1e-08
 # do
 # 2hop__132710_120035 
-for example_id in 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902
+for example_id in 10instances
 # 2hop__132710_120035
 do
 
@@ -80,10 +80,10 @@ accelerate launch --config_file="default_config.yaml" \
     # --save_total_limit=1 \
     # --load_best_model_at_end=True \
     # --lr_scheduler_type="cosine" \
-python eval_musique.py eval_musique_joint.py --data_dir /u/zliu/datastor1/KE-by-CP/data/musique_c_small --data_file examples-page.jsonl --example_id=${example_id} --model_name="${model_name}" --output_dir="${output_dir}-trainer"
+python eval_musique_joint.py --data_dir /u/zliu/datastor1/KE-by-CP/data/musique_c_small --data_file examples-page.jsonl --example_id=${example_id} --model_name="${model_name}" --output_dir="${output_dir}-trainer"
 
 # echo "Removing checkpoint"
-# rm -rf "${output_dir}-trainer/tmp_ckpt"
+rm -rf "${output_dir}-trainer/tmp_ckpt"
 done
 # done
 # done

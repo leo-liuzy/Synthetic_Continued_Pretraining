@@ -46,6 +46,8 @@ class TrainingConfig:
     no_triplet: bool
     train_split: Optional[str] = "1doc"
     valid_split: Optional[str] = "valid"
+    single: Optional[bool] = False
+    joint: Optional[bool] = False
 
     sample_triplet_ratio: Optional[float] = None
     specified_bin: Optional[str] = None
@@ -132,9 +134,15 @@ def train():
     tokenizer.sep_token = tokenizer.cls_token = tokenizer.mask_token = tokenizer.pad_token
     # END: special operation for Llama3 for missing padding token
     
-    target_tokens = np.memmap(
-        f"data/dataset/bins/musique_entigraph_gpt-4-turbo_sample8/{config.example_id}.bin", dtype=np.int32, mode="r"
-    )
+    # TODO: merge this with train_musique.py
+    if "_joint" in config.task_name:
+        target_tokens = np.memmap(
+            f"data/dataset/bins/musique_entigraph_gpt-4-turbo_sample8_joint/{config.example_id}.bin", dtype=np.int32, mode="r"
+        )
+    else:
+        target_tokens = np.memmap(
+            f"data/dataset/bins/musique_entigraph_gpt-4-turbo_sample8/{config.example_id}.bin", dtype=np.int32, mode="r"
+        )
     logging.info(f"# target_tokens: {len(target_tokens)}")
 
     rehersal_tokens = np.memmap("data/dataset/bins/RedPajama_Data_1T_Sample_train.bin", dtype=np.int32, mode="r")
@@ -145,7 +153,7 @@ def train():
         tokenizer.pad_token_id
     )
 
-    assert config.task_name == "musique_entigraph"
+    assert config.task_name in ["musique_entigraph", "musique_entigraph_joint"]
 
     target_dataset = MemmapDataset(
         config.block_size, 
