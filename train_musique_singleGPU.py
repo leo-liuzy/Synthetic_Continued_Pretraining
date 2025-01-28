@@ -247,44 +247,53 @@ def train():
         max_new_tokens=cfg.generation.max_new_tokens,
         num_return_sequences=cfg.generation.n_decoding_example,
     )
-    raw_instance = io.load_json(f"data/dataset/raw/id2musique.json")[config.example_id]
-    all_results = []
     
-    for question_type in question_types:
-        questions = raw_instance[question_type]
-        logging.info(f"Question type: {question_type}")
-        inferencer = QAInferencer(
-            cfg.evaluator.inferencers[0],
-            cfg.seed,
-            rag_model=None,
-            queries=questions,
-        )
-        result_df = eval_inferencer(
-            inferencer,
-            model,
-            tokenizer=tokenizer,
-            generation_cfg=generation_config,
-        )
-        result_df.insert(0, "question_type", question_type)
-        result_df.insert(0, "id", raw_instance["id"])
-        all_results.append(result_df)
-
-    all_results = pd.concat(all_results)
-    os.makedirs(f"{args.output_dir}/inference_results", exist_ok=True)
+    if config.multi_edit:
+        example_ids = list(io.load_json(f"data/dataset/raw/id2musique.json").keys())
+    else:
+        example_ids = [config.example_id]
     
-    all_results.to_excel(
-        f"{args.output_dir}/inference_results/{raw_instance['id']}_inferencer_results.xlsx",
-        index=False,
-    )
-    metrics = ["rouge1", "llm_accuracy"]
-    multi_level_averaging = ["question_type", "id", "question"]
-    result_df = macro_averaging(all_results, metrics, multi_level_averaging).round(2)
-    q_cat_dtype = pd.CategoricalDtype(
-        categories=question_types,
-        ordered=True,
-    )
+    
+    for example_id in example_ids:
+        logging.info(f"Evaluating on example: [{example_id}]")
+        raw_instance = io.load_json(f"data/dataset/raw/id2musique.json")[example_id]    
+        all_results = []
+        
+        for question_type in question_types:
+            questions = raw_instance[question_type]
+            logging.info(f"Question type: {question_type}")
+            inferencer = QAInferencer(
+                cfg.evaluator.inferencers[0],
+                cfg.seed,
+                rag_model=None,
+                queries=questions,
+            )
+            result_df = eval_inferencer(
+                inferencer,
+                model,
+                tokenizer=tokenizer,
+                generation_cfg=generation_config,
+            )
+            result_df.insert(0, "question_type", question_type)
+            result_df.insert(0, "id", raw_instance["id"])
+            all_results.append(result_df)
 
-    result_df["question_type"] = result_df["question_type"].astype(q_cat_dtype)
+        all_results = pd.concat(all_results)
+        os.makedirs(f"{args.output_dir}/inference_results", exist_ok=True)
+        
+        all_results.to_excel(
+            f"{args.output_dir}/inference_results/{raw_instance['id']}_inferencer_results.xlsx",
+            index=False,
+        )
+        metrics = ["rouge1", "llm_accuracy"]
+        multi_level_averaging = ["question_type", "id", "question"]
+        result_df = macro_averaging(all_results, metrics, multi_level_averaging).round(2)
+        q_cat_dtype = pd.CategoricalDtype(
+            categories=question_types,
+            ordered=True,
+        )
+
+        result_df["question_type"] = result_df["question_type"].astype(q_cat_dtype)
 
     # logger.info(result_df.sort_values(by=["question_type"], inplace=False))
 

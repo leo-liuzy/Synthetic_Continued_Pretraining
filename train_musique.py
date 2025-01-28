@@ -45,11 +45,12 @@ class TrainingConfig:
     no_single: bool
     no_pair: bool
     no_triplet: bool
+    single_doc: bool
+    multi_edit: bool
+    
     train_split: Optional[str] = "1doc"
     valid_split: Optional[str] = "valid"
     run_train: Optional[bool] = None
-    single_doc: Optional[bool] = False
-    multi_edit: Optional[bool] = False
 
     sample_triplet_ratio: Optional[float] = None
     specified_bin: Optional[str] = None
