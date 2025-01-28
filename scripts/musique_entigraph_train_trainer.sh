@@ -1,6 +1,7 @@
 #!/bin/bash
 export CUDA_VISIBLE_DEVICES=$1 #0,1,2,3
-model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B
+# model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B
+model_name=${SHARE_RES_DIR}/models/llama3/hf/Llama-3.2-3B
 # model_name=${SHARE_RES_DIR}/models/qwen/Qwen1.5-1.8B
 gpu_count=$(awk -F',' '{print NF}' <<< "$CUDA_VISIBLE_DEVICES")
 
@@ -80,6 +81,7 @@ accelerate launch --config_file="default_config.yaml" \
     # --save_total_limit=1 \
     # --load_best_model_at_end=True \
     # --lr_scheduler_type="cosine" \
+
 python eval_musique.py --task_name=$task_name --example_id=${example_id} --model_name="${model_name}" --output_dir="${output_dir}-trainer"
 
 # echo "Removing checkpoint"

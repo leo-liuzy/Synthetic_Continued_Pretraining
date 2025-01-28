@@ -1,19 +1,20 @@
 #!/bin/bash
 export CUDA_VISIBLE_DEVICES=$1 #0,1,2,3
 # model_name=${SHARE_RES_DIR}/models/llama3/hf/Meta-Llama-3-8B
-model_name=${SHARE_RES_DIR}/models/llama3/hf/Llama-3.2-3B
+# model_name=${SHARE_RES_DIR}/models/llama3/hf/Llama-3.2-3B
+model_name=${SHARE_RES_DIR}/models/llama3/hf/Llama-3.2-1B
 # model_name=${SHARE_RES_DIR}/models/qwen/Qwen1.5-1.8B
 gpu_count=$(awk -F',' '{print NF}' <<< "$CUDA_VISIBLE_DEVICES")
 
 # bs=$gpu_count
-bs=1
+bs=4
 epochs=4
 wd=1e-8
 lr=1e-05
 
 # lr=5e-05
 
-rr=0.0
+rr=0.1
 warmup=0.1
 subsample_ratio=1.0
 
@@ -23,9 +24,12 @@ grad_acc=$((bs / gpu_count / per_device_train_batch_size))
 max_grad_norm=1.0
 
 
-task_name=musique
+task_name=musique_page
 single_doc=$2
 multi_edit=$3
+
+lrs=$4
+main_process_port=$5
 
 final_task_name="${task_name}"
 
@@ -44,11 +48,11 @@ fi
 echo "Task Name: ${final_task_name}"
 
 # lr_scheduler_type=cosine
-lr_scheduler_type=constant
+lr_scheduler_type=cosine
 
 # for max_grad_norm in 0.0 0.5 1.0
 # do
-for lr in 1e-04 5e-06 1e-06 5e-05 1e-05 
+for lr in $lrs # 1e-04 5e-06 1e-06 5e-05 1e-05 
 do
 
 # for example_id in 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902 2hop__132710_120035 # 
@@ -68,8 +72,9 @@ export ACCELERATE_USE_FSDP=true
 # export CUDA_LAUNCH_BLOCKING=1
 echo "Example ID: ${example_id}"
 
+
 accelerate launch --config_file="default_config.yaml" \
-    --main_process_port 29500 \
+    --main_process_port ${main_process_port} \
     --num_processes ${gpu_count} \
     train_musique_singleGPU.py \
     --model_name=$model_name \
@@ -101,7 +106,6 @@ accelerate launch --config_file="default_config.yaml" \
     --example_id=${example_id} \
     --single_doc=${single_doc} \
     --multi_edit=${multi_edit} \
-
 
 done
 done
