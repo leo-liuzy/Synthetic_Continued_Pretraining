@@ -32,7 +32,6 @@ import math
 from accelerate.logging import get_logger
 logger = get_logger(__name__)
 
-
 @dataclass
 class TrainingConfig:
     task_name: str
@@ -49,7 +48,6 @@ class TrainingConfig:
     multi_edit: bool
     train_split: Optional[str] = "1doc"
     valid_split: Optional[str] = "valid"
-    run_train: Optional[bool] = None
 
     sample_triplet_ratio: Optional[float] = None
     specified_bin: Optional[str] = None
@@ -94,6 +92,7 @@ class MemmapDataset(Dataset):
             return dict(input_ids=torch.from_numpy(x_id).long(), labels=torch.from_numpy(x_id).long())
         except Exception as e:
             print(x_id)
+
 
 class CPTDataset(Dataset):
     def __init__(
@@ -144,43 +143,52 @@ def train():
     else:
         config.task_name += "_single"
     
-    target_tokens = np.memmap(f"data/dataset/bins/{config.task_name}/{config.example_id}.bin", dtype=np.int32, mode="r")
+    # TODO: merge this with train_musique.py
+    
+    if not config.single_doc:
+        if config.multi_edit:
+            target_tokens_path = f"data/dataset/bins/musique_entigraph_gpt-4-turbo_sample8_joint/{config.example_id}.bin"
+        else:
+            target_tokens_path = f"data/dataset/bins/musique_entigraph_gpt-4-turbo_sample8/{config.example_id}.bin"
+    else:
+        if config.multi_edit:
+            target_tokens_path = f"data/dataset/bins/musique_single_entigraph_gpt-4-turbo_tripletE8_joint/{config.example_id}.bin"
+        else:
+            target_tokens_path = f"data/dataset/bins/musique_single_entigraph_gpt-4-turbo_tripletE8/{config.example_id}.bin"
+    logging.info(f"target_tokens_path: {target_tokens_path}")
+    target_tokens = np.memmap(
+        target_tokens_path, dtype=np.int32, mode="r"
+    )
     logging.info(f"# target_tokens: {len(target_tokens)}")
 
     rehersal_tokens = np.memmap("data/dataset/bins/RedPajama_Data_1T_Sample_train.bin", dtype=np.int32, mode="r")
-    rehersal_dataset = MemmapDataset(config.block_size, rehersal_tokens, tokenizer.eos_token_id, tokenizer.pad_token_id)
+    rehersal_dataset = MemmapDataset(
+        config.block_size, 
+        rehersal_tokens,
+        tokenizer.eos_token_id, 
+        tokenizer.pad_token_id
+    )
 
-    if "musique_page" in config.task_name:
-        assert config.task_name in ["musique_page_two_single", "musique_page_single_single", "musique_page_two_multi", "musique_page_single_multi"]
-        # split 10% of the text for validation
-        target_dataset = MemmapDataset(
-            config.block_size, 
-            target_tokens[: int(len(target_tokens) * 0.9)], 
-            tokenizer.eos_token_id, 
-            tokenizer.pad_token_id
-        )
-        logging.info(f"# target_dataset example: {len(target_dataset)}")
-        train = CPTDataset(target_dataset, rehersal_dataset, config.rehersal_rate)
-        # train = target_dataset
+    assert config.task_name in ["musique_entigraph_single_single", "musique_entigraph_single_multi"]
 
-        val = MemmapDataset(
-            config.block_size, 
-            target_tokens[int(len(target_tokens) * 0.9) :], 
-            tokenizer.eos_token_id,
-            tokenizer.pad_token_id
-        )
-        data_module = dict(train_dataset=train, eval_dataset=val)
-        args.eval_strategy = "epoch"
-    else:
-        assert config.task_name in ["musique_two_single", "musique_single_single", "musique_two_multi", "musique_single_multi"]
-        target_dataset = MemmapDataset(config.block_size, target_tokens, tokenizer.eos_token_id, tokenizer.pad_token_id)
-        logging.info(f"# target_dataset example: {len(target_dataset)}")
-        train = CPTDataset(target_dataset, rehersal_dataset, config.rehersal_rate)
-        # train = target_dataset
+    target_dataset = MemmapDataset(
+        config.block_size, 
+        target_tokens[: int(len(target_tokens) * 0.9)], 
+        tokenizer.eos_token_id,
+        tokenizer.pad_token_id
+    )
+    logging.info(f"# target_dataset example: {len(target_dataset)}")
+    train = CPTDataset(target_dataset, rehersal_dataset, config.rehersal_rate)
+    # train = target_dataset
 
-        data_module = dict(train_dataset=train, eval_dataset=None)
-        args.eval_strategy = "no"
-    
+    val = MemmapDataset(
+        config.block_size, 
+        target_tokens[int(len(target_tokens) * 0.9) :], 
+        tokenizer.eos_token_id,
+        tokenizer.pad_token_id
+    )
+    data_module = dict(train_dataset=train, eval_dataset=val)
+    args.eval_strategy = "epoch"
     args.eval_on_start = data_module["eval_dataset"] is not None
     # loading model
     model = transformers.AutoModelForCausalLM.from_pretrained(
@@ -189,7 +197,6 @@ def train():
     )
     model.resize_token_embeddings(len(tokenizer), pad_to_multiple_of=8, mean_resizing=False)
     model.config.pad_token_id = tokenizer.pad_token_id
-    logger.info(f"Model: {model}")
 
     if config.use_peft:
         args.output_dir += "_lora"
@@ -212,7 +219,7 @@ def train():
     trainer = transformers.Trainer(model=model, args=args, **data_module)
     trainer.train()
     trainer.accelerator.wait_for_everyone()
-    
+
     with hydra.initialize(config_path="../KE-by-CP/configs", version_base=None):
         cfg = hydra.compose(config_name="fft.yaml")
     # ! This is important
@@ -252,8 +259,7 @@ def train():
         example_ids = list(io.load_json(f"data/dataset/raw/id2musique.json").keys())
     else:
         example_ids = [config.example_id]
-    
-    
+        
     for example_id in example_ids:
         logging.info(f"Evaluating on example: [{example_id}]")
         raw_instance = io.load_json(f"data/dataset/raw/id2musique.json")[example_id]    
@@ -294,7 +300,6 @@ def train():
         )
 
         result_df["question_type"] = result_df["question_type"].astype(q_cat_dtype)
-
     # logger.info(result_df.sort_values(by=["question_type"], inplace=False))
 
 

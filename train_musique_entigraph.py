@@ -44,10 +44,10 @@ class TrainingConfig:
     no_single: bool
     no_pair: bool
     no_triplet: bool
+    single_doc: bool
+    multi_edit: bool
     train_split: Optional[str] = "1doc"
     valid_split: Optional[str] = "valid"
-    single: Optional[bool] = False
-    joint: Optional[bool] = False
 
     sample_triplet_ratio: Optional[float] = None
     specified_bin: Optional[str] = None
@@ -135,14 +135,32 @@ def train():
     # END: special operation for Llama3 for missing padding token
     
     # TODO: merge this with train_musique.py
-    if "_joint" in config.task_name:
-        target_tokens = np.memmap(
-            f"data/dataset/bins/musique_entigraph_gpt-4-turbo_sample8_joint/{config.example_id}.bin", dtype=np.int32, mode="r"
-        )
+    if config.single_doc:
+        config.task_name += "_single"
     else:
-        target_tokens = np.memmap(
-            f"data/dataset/bins/musique_entigraph_gpt-4-turbo_sample8/{config.example_id}.bin", dtype=np.int32, mode="r"
-        )
+        config.task_name += "_two"
+    
+    if config.multi_edit:
+        config.task_name += "_multi"
+    else:
+        config.task_name += "_single"
+    
+    # TODO: merge this with train_musique.py
+    
+    if not config.single_doc:
+        if config.multi_edit:
+            target_tokens_path = f"data/dataset/bins/musique_entigraph_gpt-4-turbo_sample8_joint/{config.example_id}.bin"
+        else:
+            target_tokens_path = f"data/dataset/bins/musique_entigraph_gpt-4-turbo_sample8/{config.example_id}.bin"
+    else:
+        if config.multi_edit:
+            target_tokens_path = f"data/dataset/bins/musique_single_entigraph_gpt-4-turbo_tripletE8_joint/{config.example_id}.bin"
+        else:
+            target_tokens_path = f"data/dataset/bins/musique_single_entigraph_gpt-4-turbo_tripletE8/{config.example_id}.bin"
+    logging.info(f"target_tokens_path: {target_tokens_path}")
+    target_tokens = np.memmap(
+        target_tokens_path, dtype=np.int32, mode="r"
+    )
     logging.info(f"# target_tokens: {len(target_tokens)}")
 
     rehersal_tokens = np.memmap("data/dataset/bins/RedPajama_Data_1T_Sample_train.bin", dtype=np.int32, mode="r")
@@ -153,7 +171,7 @@ def train():
         tokenizer.pad_token_id
     )
 
-    assert config.task_name in ["musique_entigraph", "musique_entigraph_joint"]
+    assert config.task_name in ["musique_entigraph_single_single", "musique_entigraph_single_multi"]
 
     target_dataset = MemmapDataset(
         config.block_size, 
