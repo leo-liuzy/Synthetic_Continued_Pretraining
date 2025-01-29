@@ -73,7 +73,7 @@ echo "Example ID: ${example_id}"
 
 
 accelerate launch --config_file="default_config.yaml" \
-    --main_process_port 29500 \
+    --main_process_port 29600 \
     --num_processes ${gpu_count} \
     train_musique.py \
     --model_name=$model_name \

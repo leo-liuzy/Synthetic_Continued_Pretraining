@@ -28,6 +28,9 @@ task_name=musique
 single_doc=$2
 multi_edit=$3
 
+lrs=$4
+main_process_port=$5
+
 final_task_name="${task_name}"
 
 if [ "$single_doc" = "True" ]; then
@@ -49,7 +52,7 @@ lr_scheduler_type=constant
 
 # for max_grad_norm in 0.0 0.5 1.0
 # do
-for lr in 1e-04 5e-06 1e-06 5e-05 1e-05 
+for lr in $lrs # 1e-04 5e-06 1e-06 5e-05 1e-05 
 do
 
 # for example_id in 2hop__258019_119986 2hop__390772_565667 2hop__60060_25017 2hop__710977_25111 2hop__13778_15345 2hop__341498_76347 2hop__508013_351187 2hop__661591_13728 2hop__72949_9902 2hop__132710_120035 # 
@@ -70,7 +73,7 @@ export ACCELERATE_USE_FSDP=true
 echo "Example ID: ${example_id}"
 
 accelerate launch --config_file="default_config.yaml" \
-    --main_process_port 29500 \
+    --main_process_port $main_process_port \
     --num_processes ${gpu_count} \
     train_musique_singleGPU.py \
     --model_name=$model_name \
