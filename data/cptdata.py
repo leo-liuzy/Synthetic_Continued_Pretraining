@@ -4,10 +4,19 @@ import numpy as np
 import torch
 
 def _get_bin(task_name: str, split: str):
-    assert task_name in ['quality', 'rehersal', 'instruct']
+    assert task_name in ['quality', 'rehersal', 'instruct', 'controlled_RE_id']
     bin_data_dir = 'data/dataset/bins'
     implemented_quality_split = {
         'entigraph': f'{bin_data_dir}/quality_all-entigraphgpt-4-turbo.bin',
+    }
+    implemented_controlled_RE_id_split = {
+        'naive-Qwen2.5-1.5B': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-naive-Qwen2.5-1.5B.bin',
+        'naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-naive-Qwen2.5-1.5B-Instruct.bin',
+        'naive-DeepSeek-R1-Distill-Qwen-7B': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-naive-DeepSeek-R1-Distill-Qwen-7B.bin',
+        
+        'entigraph-Qwen2.5-1.5B': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-entigraph-Qwen2.5-1.5B.bin',
+        'entigraph-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-entigraph-Qwen2.5-1.5B-Instruct.bin',
+        'entigraph-DeepSeek-R1-Distill-Qwen-7B': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-entigraph-DeepSeek-R1-Distill-Qwen-7B.bin',
     }
     implemented_rehersal_split = {
         'rpj-train': f'{bin_data_dir}/togethercomputer_RedPajama_Data_1T_Sample_train.bin',
@@ -26,6 +35,9 @@ def _get_bin(task_name: str, split: str):
     elif task_name == 'instruct':
         assert split in implemented_instruct_split
         return implemented_instruct_split[split]
+    elif task_name == "controlled_RE_id":
+        assert split in implemented_controlled_RE_id_split
+        return implemented_controlled_RE_id_split[split]
     else:
         raise NotImplementedError(f"Task {task_name} is not implemented")
 
@@ -47,7 +59,35 @@ class _MemmapDataset(Dataset):
         return dict(input_ids=torch.from_numpy(x_id).long(),
                     labels=torch.from_numpy(x_id).long())
 
+
 class CPTDataset(_MemmapDataset):
+    def __init__ (
+        self, 
+        task_name: str, 
+        split: str, 
+        block_size: int, 
+        rehersal_rate: float,
+        subsample_ratio: float
+    ):
+        assert rehersal_rate <= 1.0
+        self.rehersal_rate = rehersal_rate
+        self.rehersal_data = _MemmapDataset(block_size, _get_bin('rehersal', 'rpj-train'), 1.0)
+        super().__init__(block_size,
+                            _get_bin(task_name, split),
+                            subsample_ratio)
+
+    def __len__(self):
+        return super().__len__()
+
+    def __getitem__(self, i: int) -> Dict[str, torch.Tensor]:
+        if np.random.rand() < self.rehersal_rate:
+            idx = np.random.randint(len(self.rehersal_data))
+            return self.rehersal_data[idx]
+        else:
+            return super().__getitem__(i)
+
+
+class QualityCPTDataset(_MemmapDataset):
     def __init__ (self, block_size: int, rehersal_rate: float,
                  subsample_ratio: float):
         assert rehersal_rate <= 1.0
@@ -67,18 +107,31 @@ class CPTDataset(_MemmapDataset):
         else:
             return super().__getitem__(i)
 
-def get_task_data_module(task_name: str,
-                         block_size: int,
-                         rehersal_rate: float,
-                         subsample_ratio: float,
-                         **kwargs):
+def get_task_data_module(
+    task_name: str,
+    block_size: int,
+    rehersal_rate: float,
+    subsample_ratio: float,
+    **kwargs
+    ):
     if task_name == 'quality':
-        train = CPTDataset(block_size, rehersal_rate, subsample_ratio)
+        train = QualityCPTDataset(block_size, rehersal_rate, subsample_ratio)
         val = _MemmapDataset(block_size, _get_bin('rehersal', 'rpj-test'), 1.0)
         return dict(train_dataset=train, eval_dataset=val)
-    if task_name == 'instruct':
+    elif task_name == 'instruct':
         train = _MemmapDataset(block_size, _get_bin('instruct', 'ultrachat-train'), 1.0)
         val = _MemmapDataset(block_size, _get_bin('instruct', 'ultrachat-test'), 1.0)
+        return dict(train_dataset=train, eval_dataset=val)
+    elif task_name == 'controlled_RE_id':
+        assert "split" in kwargs
+        train = CPTDataset(
+            task_name=task_name,
+            split=kwargs["split"],
+            block_size=block_size, 
+            rehersal_rate=rehersal_rate, 
+            subsample_ratio=subsample_ratio
+        )
+        val = _MemmapDataset(block_size, _get_bin('rehersal', 'rpj-test'), 1.0)
         return dict(train_dataset=train, eval_dataset=val)
     else:
         raise NotImplementedError(f"Task {task_name} is not implemented")

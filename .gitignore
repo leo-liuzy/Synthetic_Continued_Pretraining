@@ -1,3 +1,10 @@
 **/__pycache__
 **/*.key
 data/dataset/raw/quality_entigraph_gpt-4-turbo
+~/
+data/dataset/raw/archive
+.vscode/
+.history/
+data/dataset/raw/4K_controlled_RE/
+wandb/
+data/dataset/bins/
