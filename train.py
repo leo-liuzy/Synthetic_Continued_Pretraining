@@ -17,6 +17,7 @@ class TrainingConfig:
     rehersal_rate: float
     model_name: str
     subsample_ratio: float
+    split: Optional[str] = field(default="naive")
     wandb_project: Optional[str] = field(default="synthetic-continued-pretraining")
 
     def __post_init__(self):
@@ -30,6 +31,10 @@ def train():
     logging.info(f"Training config: {log_config}")
 
     # loading model
+    assert config.split in ["naive", "entigraph"]
+    model_name_base = os.path.basename(config.model_name)
+    config.split = f"{config.split}-{model_name_base}"
+    
     model = transformers.AutoModelForCausalLM.from_pretrained(
         config.model_name)
     # loading dataset

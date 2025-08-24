@@ -8,3 +8,5 @@ data/dataset/raw/archive
 data/dataset/raw/4K_controlled_RE/
 wandb/
 data/dataset/bins/
+ckpts/
+eval_results/

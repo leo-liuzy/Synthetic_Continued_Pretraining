@@ -1,41 +1,54 @@
 #!/bin/bash
-# setting up default hyperparameters
-subsample_ratio=1.0 # change this parameter to run the scaling plot
-model_name="meta-llama/Meta-Llama-3-8B"
-# Parse command-line arguments
+export CUDA_VISIBLE_DEVICES=4,5,6,7
+# model_name=${SHARE_RES_DIR}/models/qwen/Qwen2.5-1.5B-Instruct
+model_name=${SHARE_RES_DIR}/models/deepseek/DeepSeek-R1-Distill-Qwen-7B
+gpu_count=$(awk -F',' '{print NF}' <<< "$CUDA_VISIBLE_DEVICES")
+
+# bs=$gpu_count
+lr=1e-05
+wd=0.01
+warmup=0.05
+subsample_ratio=1.0
+# split=naive
+
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --lr) lr="$2"; shift 2 ;;
+        --split) split="$2"; shift 2 ;;
         --rr) rr="$2"; shift 2;;
         --epochs) epochs="$2"; shift 2 ;;
         --bs) bs="$2"; shift 2 ;;
-        --wd) wd="$2"; shift 2 ;;
-        --warmup) warmup="$2"; shift 2 ;;
-        --task_name) task_name="$2"; shift 2 ;;
-        --subsample_ratio) subsample_ratio="$2"; shift 2 ;;
-        --model_name) model_name="$2"; shift 2 ;;
-        --run_eval) run_eval=true; shift ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
 done
-gpu_count=$(nvidia-smi -L | wc -l)
+
+task_name=controlled_RE_id
 pretty_name=${model_name##*/}
-pretty_name=$(echo "$pretty_name" | sed 's/-//g')
-grad_acc=$((bs / 8))
-# Then, use an if-else statement to set the run_name
-if [ "$subsample_ratio" = "1.0" ]; then
-    run_name="${task_name}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-warmup${warmup}-${pretty_name}"
+per_device_train_batch_size=1
+grad_acc=$((bs / $gpu_count / $per_device_train_batch_size))
+
+if [ $split == "naive" ]; then
+    lr_scheduler_type="constant"
 else
-    run_name="scaling-subsample_ratio${subsample_ratio}-${task_name}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-warmup${warmup}-${pretty_name}"
+    lr_scheduler_type="cosine"
 fi
-echo "Running experiment with run name: $run_name"
+pretty_name=${model_name##*/}
+# pretty_name=$(echo "$pretty_name" | sed 's/-//g')
+if [ "$subsample_ratio" = "1.0" ]; then
+    run_name="${task_name}-${split}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-${lr_scheduler_type}-warmup${warmup}-${pretty_name}"
+else
+    run_name="scaling-subsample_ratio${subsample_ratio}-${task_name}-${split}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-${lr_scheduler_type}-warmup${warmup}-${pretty_name}"
+fi
 output_dir="ckpts/${run_name}"
 
-# Execute the training command with the specific hyperparameters
-torchrun --nproc_per_node=$gpu_count  train.py \
+
+# accelerate launch --config_file="default_config.yaml" \
+#     --num_processes ${gpu_count} \
+#     --main_process_port 0 \
+torchrun --nproc_per_node=$gpu_count \
+    train.py \
     --model_name=$model_name \
     --block_size=2048 \
-    --per_device_train_batch_size=1 \
+    --per_device_train_batch_size=$per_device_train_batch_size \
     --per_device_eval_batch_size=3 \
     --gradient_accumulation_steps=$grad_acc \
     --num_train_epochs=$epochs \
@@ -44,15 +57,16 @@ torchrun --nproc_per_node=$gpu_count  train.py \
     --subsample_ratio=$subsample_ratio \
     --overwrite_output_dir=True \
     --task_name=$task_name \
+    --split=$split \
     --logging_steps=1 \
     --run_name=$run_name \
     --bf16=True \
     --output_dir=$output_dir \
     --weight_decay=$wd \
     --warmup_ratio=$warmup \
-    --evaluation_strategy="no" \
+    --do_eval=False \
     --save_strategy="no" \
-    --lr_scheduler_type="cosine" \
+    --lr_scheduler_type=$lr_scheduler_type \
     --log_level="info" \
-    --fsdp="hybrid_shard auto_wrap" \
-    --fsdp_config="scripts/config/fsdp_config.json"
+    --fsdp="full_shard auto_wrap offload" \
+    --fsdp_config="scripts/config/qwen_config.json"

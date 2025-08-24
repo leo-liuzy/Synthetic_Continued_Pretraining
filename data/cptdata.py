@@ -19,8 +19,8 @@ def _get_bin(task_name: str, split: str):
         'entigraph-DeepSeek-R1-Distill-Qwen-7B': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-entigraph-DeepSeek-R1-Distill-Qwen-7B.bin',
     }
     implemented_rehersal_split = {
-        'rpj-train': f'{bin_data_dir}/togethercomputer_RedPajama_Data_1T_Sample_train.bin',
-        'rpj-test': f'{bin_data_dir}/togethercomputer_RedPajama_Data_1T_Sample_test.bin'
+        'rpj-train': f'{bin_data_dir}/RedPajama_Data_1T_Sample_train.bin',
+        'rpj-test': f'{bin_data_dir}/RedPajama_Data_1T_Sample_test.bin'
     }
     implemented_instruct_split = {
         'ultrachat-train': f'{bin_data_dir}/ultrachat_train.bin',

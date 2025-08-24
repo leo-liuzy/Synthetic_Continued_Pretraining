@@ -1,0 +1,6 @@
+{
+    "transformer_layer_cls_to_wrap": "Qwen2DecoderLayer",
+    "backward_prefetch": "backward_pre",
+    "cpu_ram_efficient_loading": true,
+    "forward_prefetch": true
+}

@@ -1,0 +1,20 @@
+{
+  "_data_files": [
+    {
+      "filename": "data-00000-of-00001.arrow"
+    }
+  ],
+  "_fingerprint": "b782a231f5193b14",
+  "_format_columns": [
+    "answer",
+    "answer_letter",
+    "choices",
+    "question",
+    "question_choices_formatted",
+    "subject"
+  ],
+  "_format_kwargs": {},
+  "_format_type": null,
+  "_output_all_columns": false,
+  "_split": null
+}
