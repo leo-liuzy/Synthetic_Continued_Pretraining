@@ -10,3 +10,4 @@ wandb/
 data/dataset/bins/
 ckpts/
 eval_results/
+data/dataset/raw/sampled_mmlu/

@@ -262,11 +262,9 @@ def main():
                         if eval_data_name == "mmlu_0shot_cot":
                             if "-Instruct" in model_name_or_path_base:
                                 model_answer = model_answer.split("The best answer is ")[-1].strip()
-                            elif "-Distill" in model_name_or_path_base:
-                                model_answer = model_answer.split("</think>")[-1].strip()
-                            else:
-                                raise ValueError(f"Invalid model name: {model_name_or_path_base}")
-                        
+                            
+                        if "-Distill" in model_name_or_path_base:
+                            model_answer = model_answer.split("</think>")[-1].strip()
                         results.append({
                             "text": dataset[idx]["text"] if eval_data_name in ["controlled_RE_efficacy", "controlled_RE_specificity"] else None,
                             "question": dataset[idx][problem_key],
