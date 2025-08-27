@@ -10,6 +10,7 @@ wd=0.01
 warmup=0.05
 subsample_ratio=1.0
 # split=naive
+task_name=controlled_RE_id
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -17,16 +18,17 @@ while [[ $# -gt 0 ]]; do
         --rr) rr="$2"; shift 2;;
         --epochs) epochs="$2"; shift 2 ;;
         --bs) bs="$2"; shift 2 ;;
+        --task_name) task_name="$2"; shift 2 ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
 done
 
-task_name=controlled_RE_id
+
 pretty_name=${model_name##*/}
 per_device_train_batch_size=1
 grad_acc=$((bs / $gpu_count / $per_device_train_batch_size))
 
-if [ $split == "naive" ]; then
+if [[ $split == *"naive"* ]]; then
     lr_scheduler_type="constant"
 else
     lr_scheduler_type="cosine"

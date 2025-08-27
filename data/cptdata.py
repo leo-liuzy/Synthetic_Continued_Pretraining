@@ -14,10 +14,41 @@ def _get_bin(task_name: str, split: str):
         'naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-naive-Qwen2.5-1.5B-Instruct.bin',
         'naive-DeepSeek-R1-Distill-Qwen-7B': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-naive-DeepSeek-R1-Distill-Qwen-7B.bin',
         
+        'meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct.bin',
+        'meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct.bin',
+        'meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct.bin',
+        'meta_aug-two_stage-ice-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-meta_aug-two_stage-ice-Qwen2.5-1.5B-Instruct.bin',
+        
         'entigraph-Qwen2.5-1.5B': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-entigraph-Qwen2.5-1.5B.bin',
         'entigraph-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-entigraph-Qwen2.5-1.5B-Instruct.bin',
         'entigraph-DeepSeek-R1-Distill-Qwen-7B': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-entigraph-DeepSeek-R1-Distill-Qwen-7B.bin',
     }
+    
+    implemented_controlled_RE_ood_relation_split = {
+        'naive-Qwen2.5-1.5B': f'{bin_data_dir}/4K_controlled_RE-test_ood_relation_sample-naive-Qwen2.5-1.5B.bin',
+        'meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_relation_sample-meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct.bin',
+        'meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_relation_sample-meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct.bin',
+        'meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_relation_sample-meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct.bin',
+        'meta_aug-two_stage-ice-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_relation_sample-meta_aug-two_stage-ice-Qwen2.5-1.5B-Instruct.bin',
+    }
+    
+    implemented_controlled_RE_ood_entity_split = {
+        'naive-Qwen2.5-1.5B': f'{bin_data_dir}/4K_controlled_RE-test_ood_entity_sample-naive-Qwen2.5-1.5B.bin',
+        'meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_entity_sample-meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct.bin',
+        'meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_entity_sample-meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct.bin',
+        'meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_entity_sample-meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct.bin',
+        'meta_aug-two_stage-ice-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_entity_sample-meta_aug-two_stage-ice-Qwen2.5-1.5B-Instruct.bin',
+    }
+    
+    implemented_controlled_RE_ood_both_split = {
+        'naive-Qwen2.5-1.5B': f'{bin_data_dir}/4K_controlled_RE-test_ood_both_sample-naive-Qwen2.5-1.5B.bin',
+        'meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_both_sample-meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct.bin',
+        'meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_both_sample-meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct.bin',
+        'meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_both_sample-meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct.bin',
+        'meta_aug-two_stage-ice-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_both_sample-meta_aug-two_stage-ice-Qwen2.5-1.5B-Instruct.bin',
+    }
+    
+    
     implemented_rehersal_split = {
         'rpj-train': f'{bin_data_dir}/RedPajama_Data_1T_Sample_train.bin',
         'rpj-test': f'{bin_data_dir}/RedPajama_Data_1T_Sample_test.bin'
@@ -35,9 +66,18 @@ def _get_bin(task_name: str, split: str):
     elif task_name == 'instruct':
         assert split in implemented_instruct_split
         return implemented_instruct_split[split]
-    elif task_name == "controlled_RE_id":
+    elif task_name == "ctrl_RE_id":
         assert split in implemented_controlled_RE_id_split
         return implemented_controlled_RE_id_split[split]
+    elif task_name == "ctrl_RE_ood_relation":
+        assert split in implemented_controlled_RE_ood_relation_split
+        return implemented_controlled_RE_ood_relation_split[split]
+    elif task_name == "ctrl_RE_ood_entity":
+        assert split in implemented_controlled_RE_ood_entity_split
+        return implemented_controlled_RE_ood_entity_split[split]
+    elif task_name == "ctrl_RE_ood_both":
+        assert split in implemented_controlled_RE_ood_both_split
+        return implemented_controlled_RE_ood_both_split[split]
     else:
         raise NotImplementedError(f"Task {task_name} is not implemented")
 
