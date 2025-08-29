@@ -3,7 +3,7 @@ import json
 import argparse
 import requests
 from tqdm import tqdm
-from reason import util
+# from reason import util
 from datasets import load_dataset, load_from_disk
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
@@ -76,7 +76,7 @@ Return the numerical score wrapped in <score>..</score> tag
         assert len(score_) == 1
         score = score_[0].strip()
         assert score.isdigit()
-        assert 0 <= float(score) <= 10
+        assert 0 <= float(score) <= self.MAX_VAL
         score = float(score)
         score /= self.MAX_VAL
         input["llm_accuracy-soft"] = score
@@ -119,10 +119,47 @@ Return the numerical score wrapped in <score>..</score> tag
         assert len(score_) == 1
         score = score_[0].strip()
         assert score.isdigit()
-        assert 0 <= float(score) <= 10
+        assert 0 <= float(score) <= self.MAX_VAL
         score = float(score)
         score /= self.MAX_VAL
         input["llm_accuracy-hard"] = score
+
+        return {**input}
+
+class LlmAsJudgeAbstention(curator.LLM):
+    MAX_VAL: float = 1.0
+    PROMPT: str = """
+[Instruction]
+Please act as an impartial judge and evaluate the quality of the response provided by an AI assistant to the user question displayed below. For this evaluation, you should primarily consider the following criteria:
+                Score 1: The assistant is refusing to answer the question. e.g. "I'm sorry, I don't know."
+                Score 0: Otherwise.
+                Only respond with a numerical score.
+
+[Question]
+{question}
+
+[The Start of Assistant's Response]
+{prediction}
+[The End of Assistant's Response]
+
+Return the numerical score wrapped in <score>..</score> tag
+    """.strip()
+
+    def prompt(self, input: dict) -> str:
+        """Generate a prompt for the subsubject generator."""
+        return self.PROMPT.format(
+            question=input["question"], prediction=input["predicted_answer"]
+        )
+
+    def parse(self, input: dict, response: str) -> dict:
+        """Parse the model response along with the input to the model into the desired output format.."""
+        score_ = score_tag_extractor(response)
+        assert len(score_) == 1
+        score = score_[0].strip()
+        assert score.isdigit()
+        assert 0 <= float(score) <= self.MAX_VAL
+        score = float(score)
+        input["llm_accuracy-abstention"] = score
 
         return {**input}
 
@@ -153,6 +190,10 @@ def parse_args():
     parser.add_argument(
         "--eval-data-name", type=str, default="controlled_RE_efficacy", choices=["all", "controlled_RE_efficacy", "controlled_RE_specificity", "mmlu_0shot_cot"],
         help="Dataset name"
+    )
+    parser.add_argument(
+        "--test-set-choice", type=str, default="id_sample", choices=["test_id_sample", "test_ood_entity_sample", "test_ood_relation_sample", "test_ood_both_sample"],
+        help="Test set choice"
     )
     parser.add_argument(
         "--llm-judge-name", type=str, default="gpt-4o-mini",
@@ -213,7 +254,7 @@ def main():
         model_name_or_path_base = os.path.basename(args.model_name_or_path)
         save_dir = f"{EVAL_RESULT_DIR}/{model_name_or_path_base}"
         os.makedirs(save_dir, exist_ok=True)
-        output_file = f"{save_dir}/{eval_data_name}_llm-judge.xlsx"
+        output_file = f"{save_dir}/{eval_data_name}_{args.test_set_choice}_llm-judge.xlsx"
     
         if not os.path.exists(output_file) or args.overwrite:
             if model is None:
@@ -226,7 +267,7 @@ def main():
                 skip_special_tokens=False,
             )
             if eval_data_name in ["controlled_RE_efficacy", "controlled_RE_specificity"]:
-                dataset = load_controlled_RE_data(f"{CONTROLLED_RE_DATA_DIR}/test_id_sample.jsonl")
+                dataset = load_controlled_RE_data(f"{CONTROLLED_RE_DATA_DIR}/{args.test_set_choice}.jsonl")
             elif eval_data_name == "mmlu_0shot_cot":
                 dataset = load_from_disk(f"{RAW_DATA_DIR}/sampled_mmlu")
             else:
@@ -282,13 +323,17 @@ def main():
         
         # evaluate with llm_judge
         
-        for llm_judge_type in ["soft", "hard"]:
+        for llm_judge_type in ["hard", "abstention"]:
             df = pd.read_excel(output_file)
             if f"llm_accuracy-{llm_judge_type}" not in df.columns or args.overwrite:
                 print(f"Evaluating with [{llm_judge_type}] judge")
                 llm_judge_name = args.llm_judge_name
                 if llm_judge_type == "hard":
                     llm_judge = LlmAsJudgeHard(
+                        model_name=llm_judge_name, backend_params={"max_requests_per_minute": 30_000, "max_tokens_per_minute": 150_000_000}
+                    )
+                elif llm_judge_type == "abstention":
+                    llm_judge = LlmAsJudgeAbstention(
                         model_name=llm_judge_name, backend_params={"max_requests_per_minute": 30_000, "max_tokens_per_minute": 150_000_000}
                     )
                 else:
@@ -301,7 +346,12 @@ def main():
                 scored_dataset = llm_judge(
                     scored_dataset,
                 )
-                scored_df = scored_dataset.dataset.to_pandas().drop(columns=['predicted_answer', 'answer',])
+                # import pdb; pdb.set_trace()
+                ds = scored_dataset
+                if hasattr(scored_dataset, "dataset"):
+                    ds = scored_dataset.dataset
+                    
+                scored_df = ds.to_pandas().drop(columns=['predicted_answer', 'answer',])
                 scored_df["llm_judge"] = llm_judge_name
                 scored_df.to_excel(output_file, index=False)
 

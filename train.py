@@ -29,14 +29,15 @@ def train():
     config, args = parser.parse_args_into_dataclasses()
     log_config = {**asdict(config), **asdict(args)}
     logging.info(f"Training config: {log_config}")
-
+    
     # loading model
-    assert config.split in ["naive", "entigraph"]
+    assert config.split in ["naive", "entigraph", "meta_aug-one_stage-naive", "meta_aug-one_stage-ice", "meta_aug-two_stage-naive", "meta_aug-two_stage-ice"]
     model_name_base = os.path.basename(config.model_name)
     config.split = f"{config.split}-{model_name_base}"
     
     model = transformers.AutoModelForCausalLM.from_pretrained(
         config.model_name)
+    tokenizer = transformers.AutoTokenizer.from_pretrained(config.model_name)
     # loading dataset
     data_module = get_task_data_module(**asdict(config))
 
@@ -44,6 +45,7 @@ def train():
     trainer = transformers.Trainer(model=model, args=args, **data_module)
     trainer.train()
     trainer.save_model(output_dir=args.output_dir)
+    tokenizer.save_pretrained(args.output_dir)
     trainer.accelerator.wait_for_everyone()
 
 

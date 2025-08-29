@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 def _get_bin(task_name: str, split: str):
-    assert task_name in ['quality', 'rehersal', 'instruct', 'controlled_RE_id']
+    assert task_name in ['quality', 'rehersal', 'instruct', 'ctrl_RE_id', 'ctrl_RE_ood_relation', 'ctrl_RE_ood_entity', 'ctrl_RE_ood_both']
     bin_data_dir = 'data/dataset/bins'
     implemented_quality_split = {
         'entigraph': f'{bin_data_dir}/quality_all-entigraphgpt-4-turbo.bin',
@@ -25,7 +25,7 @@ def _get_bin(task_name: str, split: str):
     }
     
     implemented_controlled_RE_ood_relation_split = {
-        'naive-Qwen2.5-1.5B': f'{bin_data_dir}/4K_controlled_RE-test_ood_relation_sample-naive-Qwen2.5-1.5B.bin',
+        'naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_relation_sample-naive-Qwen2.5-1.5B-Instruct.bin',
         'meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_relation_sample-meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct.bin',
         'meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_relation_sample-meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct.bin',
         'meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_relation_sample-meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct.bin',
@@ -33,7 +33,7 @@ def _get_bin(task_name: str, split: str):
     }
     
     implemented_controlled_RE_ood_entity_split = {
-        'naive-Qwen2.5-1.5B': f'{bin_data_dir}/4K_controlled_RE-test_ood_entity_sample-naive-Qwen2.5-1.5B.bin',
+        'naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_entity_sample-naive-Qwen2.5-1.5B-Instruct.bin',
         'meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_entity_sample-meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct.bin',
         'meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_entity_sample-meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct.bin',
         'meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_entity_sample-meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct.bin',
@@ -41,7 +41,7 @@ def _get_bin(task_name: str, split: str):
     }
     
     implemented_controlled_RE_ood_both_split = {
-        'naive-Qwen2.5-1.5B': f'{bin_data_dir}/4K_controlled_RE-test_ood_both_sample-naive-Qwen2.5-1.5B.bin',
+        'naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_both_sample-naive-Qwen2.5-1.5B-Instruct.bin',
         'meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_both_sample-meta_aug-one_stage-naive-Qwen2.5-1.5B-Instruct.bin',
         'meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_both_sample-meta_aug-one_stage-ice-Qwen2.5-1.5B-Instruct.bin',
         'meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_ood_both_sample-meta_aug-two_stage-naive-Qwen2.5-1.5B-Instruct.bin',
@@ -73,7 +73,7 @@ def _get_bin(task_name: str, split: str):
         assert split in implemented_controlled_RE_ood_relation_split
         return implemented_controlled_RE_ood_relation_split[split]
     elif task_name == "ctrl_RE_ood_entity":
-        assert split in implemented_controlled_RE_ood_entity_split
+        assert split in implemented_controlled_RE_ood_entity_split, f"split {split} is not implemented"
         return implemented_controlled_RE_ood_entity_split[split]
     elif task_name == "ctrl_RE_ood_both":
         assert split in implemented_controlled_RE_ood_both_split
@@ -162,7 +162,7 @@ def get_task_data_module(
         train = _MemmapDataset(block_size, _get_bin('instruct', 'ultrachat-train'), 1.0)
         val = _MemmapDataset(block_size, _get_bin('instruct', 'ultrachat-test'), 1.0)
         return dict(train_dataset=train, eval_dataset=val)
-    elif task_name == 'controlled_RE_id':
+    elif task_name in ['ctrl_RE_id', 'ctrl_RE_ood_relation', 'ctrl_RE_ood_entity', 'ctrl_RE_ood_both']:
         assert "split" in kwargs
         train = CPTDataset(
             task_name=task_name,
