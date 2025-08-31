@@ -15,6 +15,7 @@ from datasets import Dataset
 from transformers import AutoTokenizer
 
 from knowledge_propagation.utils import io
+from knowledge_propagation.modules.dual_retriever import DualRetrieverLite
 
 PROJ_DIR = os.path.dirname(__file__)
 EVAL_RESULT_DIR = os.path.join(PROJ_DIR, "eval_results")
@@ -36,7 +37,7 @@ from datasets import Dataset
 
 score_tag_extractor = extractor.tag_content_extractor("score")
 
-
+# from .query_vllm import LlmAsJudge, LlmAsJudgeHard, LlmAsJudgeAbstention
 class LlmAsJudge(curator.LLM):
     MAX_VAL: float = 10.0
     PROMPT: str = """
@@ -188,6 +189,10 @@ def parse_args():
         help="Number of samples to generate per example"
     )
     parser.add_argument(
+        "--rag-choice", type=str, default="prepend_all", choices=["top1", "prepend_all",],
+        help="RAG choice"
+    )
+    parser.add_argument(
         "--eval-data-name", type=str, default="controlled_RE_efficacy", choices=["all", "controlled_RE_efficacy", "controlled_RE_specificity", "mmlu_0shot_cot"],
         help="Dataset name"
     )
@@ -218,24 +223,18 @@ def load_controlled_RE_data(file_path):
     return Dataset.from_list(lst)
 
 
-def get_messages_from_problem(problem, model_name_or_path_base, dataset_name="controlled_RE_efficacy", ):
+def get_messages_from_problem(problem, model_name_or_path_base, dataset_name="controlled_RE_efficacy", retriever=None):
     """Extract messages from problem for vLLM API"""
     
     if dataset_name in ["controlled_RE_efficacy", "controlled_RE_specificity"]:
+        
+        retrieved_docs = [doc["text"] for doc in retriever.query(problem)]
+        rag_prepend = "\n\n".join([f"[Document {i}]\n{doc}" for i, doc in enumerate(retrieved_docs)])
+        rag_full = f"{rag_prepend}\n\n[Question]\n{problem}"
+        
         return [
-            {"role": "user", "content": problem}
+            {"role": "user", "content": rag_full}
         ]
-    if dataset_name == "mmlu_0shot_cot":
-        if "-Instruct" in model_name_or_path_base:
-            return [
-                {"role": "user", "content": f"Given the following question and four candidate answers (A, B, C and D), choose the best answer.\n\nQuestion: {problem}\n\n- For simple problems:\nDirectly provide the answer with minimal explanation.\n\n- For complex problems:\nUse this step-by-step format:\n## Step 1: [Concise description]\n[Brief explanation]\n## Step 2: [Concise description]\n[Brief explanation]\n\nRegardless of the approach, always conclude with:\nThe best answer is [the_answer_letter].\nwhere the [the_answer_letter] is one of A, B, C or D.\n\nLet's think step by step."}
-            ]
-        elif "-Distill" in model_name_or_path_base:
-            return [
-                {"role": "user", "content": f"Given the following question and four candidate answers (A, B, C and D), choose the best answer.\n\nQuestion: {problem}\n\nAlways conclude with:\nThe best answer is [the_answer_letter].\nwhere the [the_answer_letter] is one of A, B, C or D.\n\nLet's think step by step."}
-            ]
-        else:
-            raise ValueError(f"Invalid model name: {model_name_or_path_base}")
     else:
         raise ValueError(f"Invalid dataset name: {dataset_name}")
     
@@ -254,11 +253,10 @@ def main():
         model_name_or_path_base = os.path.basename(args.model_name_or_path)
         save_dir = f"{EVAL_RESULT_DIR}/{model_name_or_path_base}"
         os.makedirs(save_dir, exist_ok=True)
-        output_file = f"{save_dir}/{eval_data_name}_{args.test_set_choice}_llm-judge.xlsx"
+        output_file = f"{save_dir}/{eval_data_name}_{args.test_set_choice}_rag({args.rag_choice})_llm-judge.xlsx"
     
         if not os.path.exists(output_file) or args.overwrite:
-            if model is None:
-                model = LLM(args.model_name_or_path)
+            
             sampling_params = SamplingParams(
                 max_tokens=args.max_tokens, 
                 top_p=args.top_p,
@@ -284,10 +282,28 @@ def main():
                 answer_key = "answer_letter"
             else:
                 raise ValueError(f"Invalid dataset name: {eval_data_name}")
-            
 
-            all_messages = [get_messages_from_problem(d[problem_key], model_name_or_path_base=model_name_or_path_base, dataset_name=eval_data_name) for d in dataset]    
+            # import pdb; pdb.set_trace()
+            injected_corpus = dataset.to_pandas().drop_duplicates(subset="text").to_dict("records")
+
+            if args.rag_choice == "top1":
+                retriever = DualRetrieverLite(document_texts=[d['text'] for d in injected_corpus], dense_retriever_name="none", top_k=1, chunk_size=128, chunk_overlap=0)
+            elif args.rag_choice == "prepend_all":
+                class EmptyRetriever:
+                    def __init__(self, dataset):
+                        self.dataset = dataset
+                    def query(self, x):
+                        return [d for d in self.dataset]
+                # import pdb; pdb.set_trace()
+                retriever = EmptyRetriever(injected_corpus)
+            else:
+                raise ValueError(f"Invalid RAG choice: {args.rag_choice}")
+
+
+            all_messages = [get_messages_from_problem(d[problem_key], model_name_or_path_base=model_name_or_path_base, dataset_name=eval_data_name, retriever=retriever) for d in dataset]    
             
+            if model is None:
+                model = LLM(args.model_name_or_path)
             tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path)
             try:
                 texts = tokenizer.apply_chat_template(all_messages, tokenize=False, add_generation_prompt=True)
