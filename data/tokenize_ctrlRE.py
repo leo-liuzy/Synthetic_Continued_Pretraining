@@ -12,8 +12,10 @@ def _glob_all_json(dir_name: str) -> List[str]:
 def _get_quality_graph(dir_name: str) -> List[str]:
     files = _glob_all_json(dir_name)
     result = []
+    # import pdb; pdb.set_trace()
     for file in files:
         content = jload(file)
+        # import pdb; pdb.set_trace()
         result.extend(content[1:])
     return result
 
@@ -65,10 +67,9 @@ if __name__ == "__main__":
     tokenizer_name = args.tokenizer_name
 
     PROJ_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    # import pdb; pdb.set_trace()
     
     corpus_lst = _get_quality_graph(f"{PROJ_DIR}/data/dataset/raw/4K_controlled_RE/{test_data_name}/{cpt_text_construct}")
-
+    import pdb; pdb.set_trace()
     tokenized_corpus = tokenize_list(corpus_lst, tokenizer_name=tokenizer_name)
-
+    # import pdb; pdb.set_trace()
     write_to_memmap_single(tokenized_corpus, filename=f"4K_controlled_RE-{test_data_name}-{cpt_text_construct}-{os.path.basename(tokenizer_name)}.bin", dir_path = f"{PROJ_DIR}/data/dataset/bins")

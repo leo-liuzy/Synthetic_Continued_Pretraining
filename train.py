@@ -40,7 +40,7 @@ def train():
     tokenizer = transformers.AutoTokenizer.from_pretrained(config.model_name)
     # loading dataset
     data_module = get_task_data_module(**asdict(config))
-
+    import pdb; pdb.set_trace()
     # setting up trainer
     trainer = transformers.Trainer(model=model, args=args, **data_module)
     trainer.train()
