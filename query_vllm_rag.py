@@ -325,6 +325,7 @@ def main():
                             model_answer = model_answer.split("</think>")[-1].strip()
                         results.append({
                             "text": dataset[idx]["text"] if eval_data_name in ["controlled_RE_efficacy", "controlled_RE_specificity"] else None,
+                            "full_prompt": texts[idx],
                             "question": dataset[idx][problem_key],
                             "eval_data_name": eval_data_name,
                             "ground_truth_answer": dataset[idx][answer_key],
