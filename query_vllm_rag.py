@@ -164,7 +164,6 @@ Return the numerical score wrapped in <score>..</score> tag
 
         return {**input}
 
-
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Query vLLM with MATH-500 examples"
