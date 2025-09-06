@@ -10,6 +10,9 @@ subsample_ratio=1.0
 # split=naive
 task_name=ctrl_RE_id
 master_port=29500
+lr_scheduler_type=constant
+bs=16
+rr=0.0
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -20,6 +23,7 @@ while [[ $# -gt 0 ]]; do
         --task_name) task_name="$2"; shift 2 ;;
         --gpu_ids) gpu_ids="$2"; shift 2 ;;
         --master_port) master_port="$2"; shift 2 ;;
+        --lr_scheduler_type) lr_scheduler_type="$2"; shift 2 ;;
         *) echo "Unknown parameter: $1"; exit 1 ;;
     esac
 done
@@ -27,17 +31,10 @@ done
 export CUDA_VISIBLE_DEVICES=$gpu_ids
 gpu_count=$(awk -F',' '{print NF}' <<< "$CUDA_VISIBLE_DEVICES")
 
-pretty_name=${model_name##*/}
 per_device_train_batch_size=1
 grad_acc=$((bs / $gpu_count / $per_device_train_batch_size))
 
-if [[ $split == *"naive"* ]] || [[ $split == *"ice"* ]]; then
-    lr_scheduler_type="constant"
-else
-    lr_scheduler_type="cosine"
-fi
 pretty_name=${model_name##*/}
-# pretty_name=$(echo "$pretty_name" | sed 's/-//g')
 if [ "$subsample_ratio" = "1.0" ]; then
     run_name="${task_name}-${split}-lr${lr}-rr${rr}-epochs${epochs}-bs${bs}-wd${wd}-${lr_scheduler_type}-warmup${warmup}-${pretty_name}"
 else

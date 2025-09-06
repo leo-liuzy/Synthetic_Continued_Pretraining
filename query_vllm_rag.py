@@ -335,7 +335,7 @@ def main():
                 print(f"\nError processing: {e}")
             
             
-            pd.DataFrame(results).to_excel(output_file)
+            pd.DataFrame(results).to_excel(output_file, index=False)
             print(f"\nFinal results saved to {output_file}")
         
         # evaluate with llm_judge

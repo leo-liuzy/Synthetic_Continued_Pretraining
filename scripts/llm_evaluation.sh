@@ -2,7 +2,7 @@
 
 
 # model_name_or_path="/u/zliu/datastor1/shared_resources/models/qwen/Qwen2.5-1.5B-Instruct"
-model_name_or_path="ckpts/ctrl_RE_id-naive-lr1e-05-rr0.0-epochs8-bs16-wd0.01-constant-warmup0.05-Qwen2.5-1.5B-Instruct"
+model_name_or_path="ckpts/ctrl_RE_id-active_reading-task_agnostic-task_specific-lr1e-05-rr0.0-epochs5-bs16-wd0.01-cosine-warmup0.05-Qwen2.5-1.5B-Instruct"
 # model_name_or_path="ckpts/ctrl_RE_id-entigraph-lr1e-05-rr0.0-epochs2-bs16-wd0.01-cosine-warmup0.05-Qwen2.5-1.5B-Instruct"
 # model_name_or_path="ckpts/controlled_RE_id-entigraph-lr1e-05-rr0.1-epochs2-bs16-wd0.01-cosine-warmup0.05-Qwen2.5-1.5B-Instruct"
 
@@ -42,22 +42,22 @@ eval_data_name="controlled_RE_efficacy"
 # for cpt_data_choice in "naive" # "meta_aug-one_stage-naive" "meta_aug-one_stage-ice"; do
 # do
 
-for pair in "${test_set_pairs[@]}"; do
-    read -r task_name test_set_choice <<< "$pair"
-    model_name_or_path=ckpts/${task_name}-${cpt_data_choice}-lr1e-05-rr${rr}-epochs8-bs16-wd0.01-constant-warmup0.05-Qwen2.5-1.5B-Instruct
-    if [ "$task_name" != "ctrl_RE_id" ]; then
-        python query_vllm.py --model-name-or-path $model_name_or_path --eval-data-name controlled_RE_efficacy --max-tokens 1024 --test-set-choice $test_set_choice # --overwrite
-    else
-        for eval_data_name in "all"; do
-            python query_vllm.py --model-name-or-path $model_name_or_path --eval-data-name $eval_data_name --max-tokens 1024 --test-set-choice $test_set_choice # --overwrite
-        done
-    fi
-done
+# for pair in "${test_set_pairs[@]}"; do
+#     read -r task_name test_set_choice <<< "$pair"
+#     model_name_or_path=ckpts/${task_name}-${cpt_data_choice}-lr1e-05-rr${rr}-epochs8-bs16-wd0.01-constant-warmup0.05-Qwen2.5-1.5B-Instruct
+#     if [ "$task_name" != "ctrl_RE_id" ]; then
+#         python query_vllm.py --model-name-or-path $model_name_or_path --eval-data-name controlled_RE_efficacy --max-tokens 1024 --test-set-choice $test_set_choice # --overwrite
+#     else
+#         for eval_data_name in "all"; do
+#             python query_vllm.py --model-name-or-path $model_name_or_path --eval-data-name $eval_data_name --max-tokens 1024 --test-set-choice $test_set_choice # --overwrite
+#         done
+#     fi
+# done
 # done
 # done
 
-# test_set_choice="test_id_sample"
-# for eval_data_name in "controlled_RE_efficacy" # "all" "controlled_RE_specificity" # "controlled_RE_efficacy" # "controlled_RE_specificity" "mmlu_0shot_cot"
-# do
-#     python query_vllm.py --model-name-or-path $model_name_or_path --eval-data-name $eval_data_name --max-tokens 1024 --test-set-choice $test_set_choice 
-# done
+test_set_choice="test_id_sample"
+for eval_data_name in all # "controlled_RE_efficacy" # "all" "controlled_RE_specificity" # "controlled_RE_efficacy" # "controlled_RE_specificity" "mmlu_0shot_cot"
+do
+    python query_vllm.py --model-name-or-path $model_name_or_path --eval-data-name $eval_data_name --max-tokens 1024 --test-set-choice $test_set_choice 
+done

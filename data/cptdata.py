@@ -22,6 +22,10 @@ def _get_bin(task_name: str, split: str):
         'entigraph-Qwen2.5-1.5B': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-entigraph-Qwen2.5-1.5B.bin',
         'entigraph-Qwen2.5-1.5B-Instruct': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-entigraph-Qwen2.5-1.5B-Instruct.bin',
         'entigraph-DeepSeek-R1-Distill-Qwen-7B': f'{bin_data_dir}/4K_controlled_RE-test_id_sample-entigraph-DeepSeek-R1-Distill-Qwen-7B.bin',
+        
+        "active_reading-task_agnostic-Qwen2.5-1.5B-Instruct": f'{bin_data_dir}/4K_controlled_RE-test_id_sample-active_reading-task_agnostic-Qwen2.5-1.5B-Instruct.bin',
+        "active_reading-task_specific-Qwen2.5-1.5B-Instruct": f'{bin_data_dir}/4K_controlled_RE-test_id_sample-active_reading-task_specific-Qwen2.5-1.5B-Instruct.bin',
+        "active_reading-task_agnostic-task_specific-Qwen2.5-1.5B-Instruct": f'{bin_data_dir}/4K_controlled_RE-test_id_sample-active_reading-task_agnostic-task_specific-Qwen2.5-1.5B-Instruct.bin',
     }
     
     implemented_controlled_RE_ood_relation_split = {

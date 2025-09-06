@@ -31,7 +31,7 @@ def train():
     logging.info(f"Training config: {log_config}")
     
     # loading model
-    assert config.split in ["naive", "entigraph", "meta_aug-one_stage-naive", "meta_aug-one_stage-ice", "meta_aug-two_stage-naive", "meta_aug-two_stage-ice"]
+    assert config.split in ["naive", "entigraph", "meta_aug-one_stage-naive", "meta_aug-one_stage-ice", "meta_aug-two_stage-naive", "meta_aug-two_stage-ice", "active_reading-task_agnostic", "active_reading-task_specific", "active_reading-task_agnostic-task_specific"]
     model_name_base = os.path.basename(config.model_name)
     config.split = f"{config.split}-{model_name_base}"
     
@@ -40,7 +40,7 @@ def train():
     tokenizer = transformers.AutoTokenizer.from_pretrained(config.model_name)
     # loading dataset
     data_module = get_task_data_module(**asdict(config))
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     # setting up trainer
     trainer = transformers.Trainer(model=model, args=args, **data_module)
     trainer.train()
