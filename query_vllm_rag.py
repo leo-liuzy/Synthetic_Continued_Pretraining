@@ -160,7 +160,7 @@ Return the numerical score wrapped in <score>..</score> tag
         assert score.isdigit()
         assert 0 <= float(score) <= self.MAX_VAL
         score = float(score)
-        input["llm_accuracy-abstention"] = score
+        input["abstention-rate"] = score
 
         return {**input}
 
