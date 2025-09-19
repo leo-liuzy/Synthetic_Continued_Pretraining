@@ -188,11 +188,11 @@ def parse_args():
         help="Number of samples to generate per example"
     )
     parser.add_argument(
-        "--eval-data-name", type=str, default="controlled_RE_efficacy", choices=["all", "controlled_RE_efficacy", "controlled_RE_specificity", "mmlu_0shot_cot"],
+        "--eval-data-name", type=str, default="controlled_RE_efficacy", choices=["all", "controlled_RE_efficacy_atomic", "controlled_RE_efficacy", "controlled_RE_specificity", "mmlu_0shot_cot"],
         help="Dataset name"
     )
     parser.add_argument(
-        "--test-set-choice", type=str, default="id_sample", choices=["test_id_sample", "test_ood_entity_sample", "test_ood_relation_sample", "test_ood_both_sample"],
+        "--test-set-choice", type=str, default="test_id_sample", choices=["test_id_sample", "test_ood_entity_sample", "test_ood_relation_sample", "test_ood_both_sample"],
         help="Test set choice"
     )
     parser.add_argument(
@@ -203,15 +203,19 @@ def parse_args():
         "--overwrite", action="store_true",
         help="Whether to overwrite the existing results"
     )
+    parser.add_argument(
+        "--question_key", type=str, default="atomic_questions",
+        help="Question key"
+    )
     return parser.parse_args()
 
 
 
-def load_controlled_RE_data(file_path):
+def load_controlled_RE_data(args, file_path):
     samples = io.load_jsonlines(file_path)
     lst = []
     for s in samples:
-        questions = s["questions"]
+        questions = s[args.question_key]
         for q in questions:
             q["text"] = s["text"]
         lst.extend(questions)
@@ -221,7 +225,7 @@ def load_controlled_RE_data(file_path):
 def get_messages_from_problem(problem, model_name_or_path_base, dataset_name="controlled_RE_efficacy", ):
     """Extract messages from problem for vLLM API"""
     
-    if dataset_name in ["controlled_RE_efficacy", "controlled_RE_specificity"]:
+    if dataset_name in ["controlled_RE_efficacy", "controlled_RE_specificity", "controlled_RE_efficacy_atomic"]:
         return [
             {"role": "user", "content": problem}
         ]
@@ -245,12 +249,14 @@ def main():
     args = parse_args()
     
     if args.eval_data_name == "all":
-        eval_data_names = ["controlled_RE_efficacy", "controlled_RE_specificity", "mmlu_0shot_cot"]
+        eval_data_names = ["controlled_RE_efficacy", "controlled_RE_specificity", "controlled_RE_efficacy_atomic", "mmlu_0shot_cot"]
     else:
         eval_data_names = [args.eval_data_name]
     model = None
     
     for eval_data_name in eval_data_names:
+        if eval_data_name == "controlled_RE_efficacy_atomic":
+            args.question_key = "atomic_questions"
         model_name_or_path_base = os.path.basename(args.model_name_or_path)
         save_dir = f"{EVAL_RESULT_DIR}/{model_name_or_path_base}"
         os.makedirs(save_dir, exist_ok=True)
@@ -266,8 +272,8 @@ def main():
                 n=args.num_samples,
                 skip_special_tokens=False,
             )
-            if eval_data_name in ["controlled_RE_efficacy", "controlled_RE_specificity"]:
-                dataset = load_controlled_RE_data(f"{CONTROLLED_RE_DATA_DIR}/{args.test_set_choice}.jsonl")
+            if eval_data_name in ["controlled_RE_efficacy", "controlled_RE_specificity", "controlled_RE_efficacy_atomic"]:
+                dataset = load_controlled_RE_data(args, f"{CONTROLLED_RE_DATA_DIR}/{args.test_set_choice}.jsonl")
             elif eval_data_name == "mmlu_0shot_cot":
                 dataset = load_from_disk(f"{RAW_DATA_DIR}/sampled_mmlu")
             else:
@@ -275,6 +281,9 @@ def main():
             
             if eval_data_name == "controlled_RE_efficacy":
                 problem_key = "alias_question"
+                answer_key = "answer"
+            elif eval_data_name == "controlled_RE_efficacy_atomic":
+                problem_key = "question"
                 answer_key = "answer"
             elif eval_data_name == "controlled_RE_specificity":
                 problem_key = "unalias_question"
@@ -307,12 +316,13 @@ def main():
                         if "-Distill" in model_name_or_path_base:
                             model_answer = model_answer.split("</think>")[-1].strip()
                         results.append({
-                            "text": dataset[idx]["text"] if eval_data_name in ["controlled_RE_efficacy", "controlled_RE_specificity"] else None,
+                            "text": dataset[idx]["text"] if eval_data_name in ["controlled_RE_efficacy", "controlled_RE_specificity", "controlled_RE_efficacy_atomic"] else None,
                             "question": dataset[idx][problem_key],
                             "eval_data_name": eval_data_name,
                             "ground_truth_answer": dataset[idx][answer_key],
                             "sample_id": sample_idx,
-                            "model_response": model_answer
+                            "model_response": model_answer,
+                            "question_key": args.question_key,
                         })
             except Exception as e:
                 print(f"\nError processing: {e}")

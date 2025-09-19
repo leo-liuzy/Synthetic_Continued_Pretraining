@@ -208,15 +208,19 @@ def parse_args():
         "--overwrite", action="store_true",
         help="Whether to overwrite the existing results"
     )
+    parser.add_argument(
+        "--question_key", type=str, default="questions",
+        help="Question key"
+    )
     return parser.parse_args()
 
 
 
-def load_controlled_RE_data(file_path):
+def load_controlled_RE_data(args, file_path):
     samples = io.load_jsonlines(file_path)
     lst = []
     for s in samples:
-        questions = s["questions"]
+        questions = s[args.question_key]
         for q in questions:
             q["text"] = s["text"]
         lst.extend(questions)
@@ -265,7 +269,7 @@ def main():
                 skip_special_tokens=False,
             )
             if eval_data_name in ["controlled_RE_efficacy", "controlled_RE_specificity"]:
-                dataset = load_controlled_RE_data(f"{CONTROLLED_RE_DATA_DIR}/{args.test_set_choice}.jsonl")
+                dataset = load_controlled_RE_data(args, f"{CONTROLLED_RE_DATA_DIR}/{args.test_set_choice}.jsonl")
             elif eval_data_name == "mmlu_0shot_cot":
                 dataset = load_from_disk(f"{RAW_DATA_DIR}/sampled_mmlu")
             else:
@@ -329,7 +333,8 @@ def main():
                             "eval_data_name": eval_data_name,
                             "ground_truth_answer": dataset[idx][answer_key],
                             "sample_id": sample_idx,
-                            "model_response": model_answer
+                            "model_response": model_answer,
+                            "question_key": args.question_key,
                         })
             except Exception as e:
                 print(f"\nError processing: {e}")

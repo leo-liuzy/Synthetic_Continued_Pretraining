@@ -23,10 +23,11 @@ class Generator(curator.LLM):
         input["completion"] = response
         return {**input}
 
-model_name = "gpt-5"
+# model_name = "gpt-5"
+model_name = "gpt-5-nano"
 
 rel_bank_generator = Generator(model_name=model_name)
-fpath = "/home/zliu/zliu/Synthetic_Continued_Pretraining_leo/data/dataset/raw/4K_controlled_RE/test_id_sample_active_reading_augmentation.jsonl"
+fpath = "/u/zliu/datastor1/Synthetic_Continued_Pretraining/data/dataset/raw/4K_controlled_RE/test_id_active_reading_strategy_construction.jsonl"
 examples = io.load_jsonlines(fpath)
 dataset = Dataset.from_list(examples[:])
 dataset = rel_bank_generator(dataset)
